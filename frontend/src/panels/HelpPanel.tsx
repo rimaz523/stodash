@@ -27,6 +27,7 @@ const COMMANDS: [string, string][] = [
   ['LAYOUT Morning', 'Load the layout called Morning (also LAYOUT LOAD Morning)'],
   ['LAYOUT DEL Morning', 'Delete a saved layout'],
   ['MSFT US EQUITY GP', 'Bloomberg-style words like US and EQUITY are ignored'],
+  ['THEME', 'Switch between dark and light (THEME LIGHT, THEME DARK; or the button at the top right)'],
   ['HELP', 'This panel'],
   ['CLEAR', 'Close every panel'],
 ]
@@ -52,9 +53,12 @@ const KEYS: [string, string][] = [
   ['Alt X', 'Close the active panel'],
   ['Alt [  Alt ]', 'Move the active panel earlier / later in the layout'],
   ['Alt L', 'Open saved layouts'],
+  ['Alt T', 'Switch between dark and light'],
   ['Alt Shift 1–9', 'Load saved layout 1–9 (in LAYOUT order)'],
   ['?', 'Open this help'],
   ['Drag a gap', 'Resize panels; arrow keys on a focused divider, Enter or double-click evens it'],
+  ['Enter on a row', 'In W, FX, CRYPTO and EQS: open it (Shift Enter: new panel); Tab moves between rows'],
+  ['Alt ↑ ↓ on a W row', 'Move that symbol up or down the watchlist'],
 ]
 
 export function HelpPanel({ onRun, ...frame }: PanelProps & { onRun: (cmd: string) => void }) {

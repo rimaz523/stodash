@@ -3,8 +3,9 @@ import { api } from '../api/client'
 import type { CryptoCoin } from '../api/types'
 import { LoadError, PanelFrame } from '../components/PanelFrame'
 import { Sparkline } from '../components/Sparkline'
-import { useApi } from '../hooks/useApi'
+import { staleOf, useApi } from '../hooks/useApi'
 import * as fmt from '../lib/format'
+import { openRowProps } from '../lib/rows'
 import type { OpenCommand, PanelProps } from './types'
 
 type SortKey = 'rank' | 'price' | 'change24h' | 'change7d' | 'marketCap' | 'volume24h'
@@ -31,9 +32,9 @@ export function CryptoPanel({ onOpen, ...frame }: PanelProps & { onOpen: OpenCom
   const toggle = (key: SortKey) => setSort((s) => (s.key === key ? { key, desc: !s.desc } : { key, desc: key !== 'rank' }))
 
   return (
-    <PanelFrame fn="CRYPTO" title={<span>Crypto · top {board.data?.coins.length ?? 25}</span>} {...frame}>
+    <PanelFrame fn="CRYPTO" title={<span>Crypto · top {board.data?.coins.length ?? 25}</span>} stale={staleOf(board)} {...frame}>
       {board.loading && <div className="skeleton" style={{ height: 300, margin: 16 }} aria-hidden="true" />}
-      {board.error && <LoadError error={board.error} what="crypto prices" />}
+      {board.error && <LoadError error={board.error} what="crypto prices" onRetry={board.reload} />}
       {board.data && (
         <div className="crypto">
           <div className="crypto-table-wrap">
@@ -91,7 +92,7 @@ function Row({ coin, onOpen }: { coin: CryptoCoin; onOpen: OpenCommand }) {
   const d24 = fmt.direction(coin.change24h)
   const d7 = fmt.direction(coin.change7d)
   return (
-    <tr onClick={(e) => onOpen(`${coin.yahooSymbol} GP`, e.shiftKey)} title={`Chart ${coin.name} (${coin.yahooSymbol})`}>
+    <tr {...openRowProps((n) => onOpen(`${coin.yahooSymbol} GP`, n))} title={`Chart ${coin.name} (${coin.yahooSymbol})`}>
       <td className="muted">{coin.rank}</td>
       <th scope="row" className="coin">
         <span className="mono">{coin.symbol}</span> <span className="muted">{coin.name}</span>

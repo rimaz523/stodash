@@ -4,7 +4,7 @@ import { ECO_RANGES, type EcoIndicator, type EcoRange, type EcoUnit } from '../a
 import { LineChart } from '../components/LineChart'
 import { LoadError, PanelFrame } from '../components/PanelFrame'
 import { Sparkline } from '../components/Sparkline'
-import { useApi } from '../hooks/useApi'
+import { staleOf, useApi } from '../hooks/useApi'
 import * as fmt from '../lib/format'
 import { calendarDate } from '../lib/time'
 import type { PanelProps } from './types'
@@ -54,9 +54,9 @@ export function EcoPanel({ indicator, range, onChange, ...frame }: Props) {
   const selected = dash.data?.indicators.find((i) => i.id === indicator)
 
   return (
-    <PanelFrame fn="ECO" title={<span>US economy</span>} {...frame}>
+    <PanelFrame fn="ECO" title={<span>US economy</span>} stale={staleOf(dash)} {...frame}>
       {dash.loading && <TilesSkeleton />}
-      {dash.error && <LoadError error={dash.error} what="economic data" />}
+      {dash.error && <LoadError error={dash.error} what="economic data" onRetry={dash.reload} />}
       {dash.data && !dash.data.configured && (
         <div className="state">
           <strong>FRED key not configured</strong>
@@ -140,7 +140,7 @@ function Detail({ ind, range, onRange, onBack }: {
         </div>
       </div>
       <div className="eco-chart">
-        {series.error && <LoadError error={series.error} what={ind.label} />}
+        {series.error && <LoadError error={series.error} what={ind.label} onRetry={series.reload} />}
         {series.data && <LineChart points={series.data.points} format={format} />}
       </div>
     </div>

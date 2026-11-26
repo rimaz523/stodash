@@ -34,7 +34,7 @@ public sealed class FilingsService(SecClient sec, SecCompanyLookup lookup, Marke
         });
     }
 
-    private static List<Filing> MapFilings(long cik, JsonNode? recent)
+    internal static List<Filing> MapFilings(long cik, JsonNode? recent)
     {
         var accessions = recent?["accessionNumber"] as JsonArray ?? [];
         var filings = new List<Filing>(accessions.Count);
@@ -65,7 +65,7 @@ public sealed class FilingsService(SecClient sec, SecCompanyLookup lookup, Marke
     private static string? Str(JsonNode? node) =>
         node is JsonValue v && v.TryGetValue<string>(out var s) && !string.IsNullOrWhiteSpace(s) ? s : null;
 
-    private static string Categorize(string form)
+    internal static string Categorize(string form)
     {
         var f = form.EndsWith("/A", StringComparison.Ordinal) ? form[..^2] : form;
         return f switch
@@ -130,7 +130,7 @@ public sealed class FilingsService(SecClient sec, SecCompanyLookup lookup, Marke
         ["8.01"] = "Other events",
     };
 
-    private static string Describe(string form, string? items, string? docDescription)
+    internal static string Describe(string form, string? items, string? docDescription)
     {
         var amended = form.EndsWith("/A", StringComparison.Ordinal);
         var baseForm = amended ? form[..^2] : form;

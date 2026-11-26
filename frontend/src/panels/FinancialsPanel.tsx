@@ -3,7 +3,7 @@ import { api } from '../api/client'
 import { PERIODS, type FinancialStatements, type Period, type RowUnit, type StatementRow } from '../api/types'
 import { LoadError, PanelFrame } from '../components/PanelFrame'
 import { QuoteHeader } from '../components/QuoteHeader'
-import { useApi } from '../hooks/useApi'
+import { staleOf, useApi } from '../hooks/useApi'
 import * as fmt from '../lib/format'
 import { calendarDate } from '../lib/time'
 import { FunctionSwitch, PanelTitle } from './FunctionSwitch'
@@ -37,12 +37,13 @@ export function FinancialsPanel({ symbol, period, statement, onChange, onSwitch,
   return (
     <PanelFrame
       fn="FA"
+      stale={staleOf(quote, fin)}
       title={<PanelTitle symbol={symbol} name={quote.data?.name} />}
       actions={<FunctionSwitch current="FA" onSwitch={onSwitch} />}
       {...frame}
     >
       {fatal ? (
-        <LoadError error={fatal} what={symbol} />
+        <LoadError error={fatal} what={symbol} onRetry={() => { quote.reload(); fin.reload() }} />
       ) : (
         <div className="fa">
           <QuoteHeader quote={quote.data} loading={quote.loading} />
@@ -84,7 +85,7 @@ export function FinancialsPanel({ symbol, period, statement, onChange, onSwitch,
           </div>
 
           {fin.loading && <TableSkeleton />}
-          {fin.error && <LoadError error={fin.error} what="financial statements" />}
+          {fin.error && <LoadError error={fin.error} what="financial statements" onRetry={fin.reload} />}
           {fin.data && <Statements data={fin.data} rows={shown} />}
         </div>
       )}

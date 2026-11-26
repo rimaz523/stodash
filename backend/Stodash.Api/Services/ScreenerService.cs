@@ -56,6 +56,15 @@ public sealed class ScreenerService(
 
     public async Task<ScreenerResult> ScreenAsync(ScreenerQuery q, CancellationToken ct)
     {
+        Validate(q); // bad input is a 400 before any snapshot work
+        var snap = await GetSnapshotAsync(ct);
+        if (DateTimeOffset.UtcNow - snap.PricesAsOf > PricesFreshFor) StartBackgroundRefresh();
+        return Screen(snap, q, Refreshing);
+    }
+
+    /// <summary>Checks a query's limit, sort and ranges. Returns the limit and sort to use.</summary>
+    internal static (int Limit, string SortKey, Func<ScreenerRow, IComparable?> SortBy) Validate(ScreenerQuery q)
+    {
         var limit = q.Limit ?? DefaultLimit;
         if (limit is < 1 or > MaxLimit) throw new ArgumentException($"limit must be between 1 and {MaxLimit}.");
         var sortKey = string.IsNullOrWhiteSpace(q.Sort) ? "marketCap" : q.Sort.Trim();
@@ -64,10 +73,13 @@ public sealed class ScreenerService(
         CheckRange("market cap", q.MinCap, q.MaxCap);
         CheckRange("P/E", q.MinPe, q.MaxPe);
         CheckRange("% change", q.MinChange, q.MaxChange);
+        return (limit, sortKey, sortBy);
+    }
 
-        var snap = await GetSnapshotAsync(ct);
-        if (DateTimeOffset.UtcNow - snap.PricesAsOf > PricesFreshFor) StartBackgroundRefresh();
-
+    /// <summary>Filters and sorts a snapshot. Pure, so it's unit-tested directly.</summary>
+    internal static ScreenerResult Screen(ScreenerSnapshot snap, ScreenerQuery q, bool refreshing)
+    {
+        var (limit, sortKey, sortBy) = Validate(q);
         var sectors = snap.Rows.GroupBy(r => r.Sector)
             .Select(g => new SectorCount(g.Key, g.Count()))
             .OrderBy(s => s.Sector, StringComparer.Ordinal)
@@ -90,7 +102,7 @@ public sealed class ScreenerService(
             .Concat(matches.Where(r => sortBy(r) is null).OrderBy(r => r.Symbol, StringComparer.Ordinal));
 
         return new ScreenerResult(snap.Universe, snap.Rows.Count, matches.Count, sorted.Take(limit).ToList(), sectors,
-            snap.UniverseAsOf, snap.PricesAsOf, Refreshing, snap.Source);
+            snap.UniverseAsOf, snap.PricesAsOf, refreshing, snap.Source);
     }
 
     /// <summary>The latest snapshot: from memory, else the copy saved in the database, else built now.</summary>

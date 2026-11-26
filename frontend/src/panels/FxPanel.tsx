@@ -1,8 +1,9 @@
 import { api } from '../api/client'
 import type { FxBoard } from '../api/types'
 import { LoadError, PanelFrame } from '../components/PanelFrame'
-import { useApi } from '../hooks/useApi'
+import { staleOf, useApi } from '../hooks/useApi'
 import * as fmt from '../lib/format'
+import { openRowProps } from '../lib/rows'
 import type { OpenCommand, PanelProps } from './types'
 
 /** Yen and yuan rates are large numbers, so fewer decimals; everything else gets four. */
@@ -12,10 +13,17 @@ export function FxPanel({ onOpen, ...frame }: PanelProps & { onOpen: OpenCommand
   const fx = useApi('fx', (s) => api.fx(s), 60_000)
 
   return (
-    <PanelFrame fn="FX" title={<span>Currencies</span>} {...frame}>
+    <PanelFrame fn="FX" title={<span>Currencies</span>} stale={staleOf(fx)} {...frame}>
       {fx.loading && <div className="skeleton" style={{ height: 240, margin: 16 }} aria-hidden="true" />}
-      {fx.error && <LoadError error={fx.error} what="currency rates" />}
-      {fx.data && <Board data={fx.data} onOpen={onOpen} />}
+      {fx.error && <LoadError error={fx.error} what="currency rates" onRetry={fx.reload} />}
+      {fx.data && (fx.data.pairs.length > 0 ? (
+        <Board data={fx.data} onOpen={onOpen} />
+      ) : (
+        <div className="state">
+          <strong>No rates right now</strong>
+          <span>Neither Yahoo nor the ECB returned rates. Try again shortly.</span>
+        </div>
+      ))}
     </PanelFrame>
   )
 }
@@ -39,7 +47,7 @@ function Board({ data, onOpen }: { data: FxBoard; onOpen: OpenCommand }) {
           {data.pairs.map((p) => {
             const dir = fmt.direction(p.change)
             return (
-              <tr key={p.pair} onClick={(e) => onOpen(`${p.symbol} GP`, e.shiftKey)} title={`Chart ${p.pair} (${p.symbol})`}>
+              <tr key={p.pair} {...openRowProps((n) => onOpen(`${p.symbol} GP`, n))} title={`Chart ${p.pair} (${p.symbol})`}>
                 <th scope="row" className="mono">
                   {p.pair}
                 </th>

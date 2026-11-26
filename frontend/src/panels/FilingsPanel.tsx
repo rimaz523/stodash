@@ -3,7 +3,7 @@ import { api } from '../api/client'
 import { FILING_CATEGORIES, type FilingCategory } from '../api/types'
 import { LoadError, PanelFrame } from '../components/PanelFrame'
 import { QuoteHeader } from '../components/QuoteHeader'
-import { useApi } from '../hooks/useApi'
+import { staleOf, useApi } from '../hooks/useApi'
 import { calendarDate } from '../lib/time'
 import { FunctionSwitch, PanelTitle } from './FunctionSwitch'
 import type { FilingFilter, SymbolPanelProps } from './types'
@@ -44,12 +44,13 @@ export function FilingsPanel({ symbol, filter, onFilterChange, onSwitch, ...fram
   return (
     <PanelFrame
       fn="CF"
+      stale={staleOf(quote, filings)}
       title={<PanelTitle symbol={symbol} name={quote.data?.name ?? filings.data?.company} />}
       actions={<FunctionSwitch current="CF" onSwitch={onSwitch} />}
       {...frame}
     >
       {fatal ? (
-        <LoadError error={fatal} what={symbol} />
+        <LoadError error={fatal} what={symbol} onRetry={() => { quote.reload(); filings.reload() }} />
       ) : (
         <div className="cf">
           <QuoteHeader quote={quote.data} loading={quote.loading} />
@@ -73,7 +74,7 @@ export function FilingsPanel({ symbol, filter, onFilterChange, onSwitch, ...fram
           )}
 
           {filings.loading && <RowsSkeleton />}
-          {filings.error && <LoadError error={filings.error} what="SEC filings" />}
+          {filings.error && <LoadError error={filings.error} what="SEC filings" onRetry={filings.reload} />}
           {filings.data?.note && (
             <div className="state">
               <strong>No SEC filings</strong>

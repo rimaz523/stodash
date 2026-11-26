@@ -248,7 +248,7 @@ public sealed class FinancialsService(
     /// The values one XBRL tag reported for the wanted period type, by end date, keeping the most recently
     /// filed figure when a later filing restates a number.
     /// </summary>
-    private static (Dictionary<string, double> Values, string? Unit) ReadTag(JsonNode? tag, string unitKind, string period)
+    internal static (Dictionary<string, double> Values, string? Unit) ReadTag(JsonNode? tag, string unitKind, string period)
     {
         var byDate = new Dictionary<string, (double Value, string Filed)>();
         if (tag?["units"] is not JsonObject units) return ([], null);

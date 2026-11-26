@@ -99,7 +99,7 @@ public sealed class LayoutService(StodashDb db, ICurrentUser user)
     }
 
     /// <summary>The workspace as compact JSON, after checking its outline: {"panels": [{"kind": "...", ...}, ...], ...}.</summary>
-    private static string CheckWorkspace(JsonElement? workspace)
+    internal static string CheckWorkspace(JsonElement? workspace)
     {
         if (workspace is not { ValueKind: JsonValueKind.Object } ws ||
             !ws.TryGetProperty("panels", out var panels) || panels.ValueKind != JsonValueKind.Array)

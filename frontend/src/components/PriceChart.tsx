@@ -17,7 +17,8 @@ import {
 } from 'lightweight-charts'
 import type { PriceBar, PriceHistory } from '../api/types'
 import * as fmt from '../lib/format'
-import { theme } from '../lib/theme'
+import { chartTheme, type ChartTheme } from '../lib/theme'
+import { useTheme } from '../lib/themeMode'
 import { tzOffsetSeconds } from '../lib/time'
 
 export type ChartType = 'candle' | 'area'
@@ -61,7 +62,22 @@ function legendTime(t: number, intraday: boolean) {
   })
 }
 
+/** The theme-dependent chart options, applied at creation and again whenever the theme changes. */
+function themeOptions(theme: ChartTheme) {
+  return {
+    layout: { background: { type: ColorType.Solid, color: theme.panel }, textColor: theme.text, fontFamily: theme.font, fontSize: 11 },
+    grid: { vertLines: { color: theme.grid }, horzLines: { color: theme.grid } },
+    rightPriceScale: { borderColor: theme.border },
+    timeScale: { borderColor: theme.border },
+    crosshair: {
+      vertLine: { color: theme.muted, labelBackgroundColor: theme.label },
+      horzLine: { color: theme.muted, labelBackgroundColor: theme.label },
+    },
+  }
+}
+
 export function PriceChart({ history, options }: Props) {
+  const mode = useTheme()
   const hostRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<SeriesType>[]>([])
@@ -86,22 +102,12 @@ export function PriceChart({ history, options }: Props) {
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
+    const base = themeOptions(chartTheme())
     const chart = createChart(host, {
       autoSize: true,
-      layout: {
-        background: { type: ColorType.Solid, color: theme.panel },
-        textColor: theme.text,
-        fontFamily: theme.font,
-        fontSize: 11,
-      },
-      grid: { vertLines: { color: theme.grid }, horzLines: { color: theme.grid } },
-      rightPriceScale: { borderColor: theme.border },
-      timeScale: { borderColor: theme.border, rightOffset: 3, secondsVisible: false },
-      crosshair: {
-        mode: CrosshairMode.Normal,
-        vertLine: { color: theme.muted, labelBackgroundColor: '#1d2532' },
-        horzLine: { color: theme.muted, labelBackgroundColor: '#1d2532' },
-      },
+      ...base,
+      timeScale: { ...base.timeScale, rightOffset: 3, secondsVisible: false },
+      crosshair: { ...base.crosshair, mode: CrosshairMode.Normal },
     })
     chartRef.current = chart
     return () => {
@@ -111,10 +117,16 @@ export function PriceChart({ history, options }: Props) {
     }
   }, [])
 
-  // Rebuild series whenever data or display options change.
+  // Recolor the chart itself when the theme changes (the series effect below recolors the series).
+  useEffect(() => {
+    chartRef.current?.applyOptions(themeOptions(chartTheme()))
+  }, [mode])
+
+  // Rebuild series whenever data, display options or the theme change.
   useEffect(() => {
     const chart = chartRef.current
     if (!chart) return
+    const theme = chartTheme()
     for (const s of seriesRef.current) chart.removeSeries(s)
     seriesRef.current = []
 
@@ -204,7 +216,7 @@ export function PriceChart({ history, options }: Props) {
 
     chart.timeScale().fitContent()
     setHoverIndex(null)
-  }, [history, prepared, options])
+  }, [history, prepared, options, mode])
 
   // Crosshair legend.
   useEffect(() => {

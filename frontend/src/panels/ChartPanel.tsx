@@ -3,7 +3,7 @@ import { RANGES, type Range } from '../api/types'
 import { LoadError, PanelFrame } from '../components/PanelFrame'
 import { PriceChart, type ChartOptions } from '../components/PriceChart'
 import { QuoteHeader } from '../components/QuoteHeader'
-import { useApi } from '../hooks/useApi'
+import { staleOf, useApi } from '../hooks/useApi'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import * as fmt from '../lib/format'
 import { FunctionSwitch, PanelTitle } from './FunctionSwitch'
@@ -42,12 +42,13 @@ export function ChartPanel({ symbol, range, onRangeChange, onSwitch, ...frame }:
   return (
     <PanelFrame
       fn="GP"
+      stale={staleOf(quote, history)}
       title={<PanelTitle symbol={symbol} name={quote.data?.name} />}
       actions={<FunctionSwitch current="GP" onSwitch={onSwitch} />}
       {...frame}
     >
       {fatal ? (
-        <LoadError error={fatal} what={symbol} />
+        <LoadError error={fatal} what={symbol} onRetry={() => { quote.reload(); history.reload() }} />
       ) : (
         <div className="gp">
           <QuoteHeader
@@ -101,7 +102,12 @@ export function ChartPanel({ symbol, range, onRangeChange, onSwitch, ...frame }:
           </div>
 
           {history.error ? (
-            <LoadError error={history.error} what="price history" />
+            <LoadError error={history.error} what="price history" onRetry={history.reload} />
+          ) : history.data && history.data.bars.length === 0 ? (
+            <div className="state">
+              <strong>No prices for {range}</strong>
+              <span>{symbol} has no trading data in this range. Try a longer one.</span>
+            </div>
           ) : history.data ? (
             <PriceChart history={history.data} options={options} />
           ) : (

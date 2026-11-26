@@ -29,7 +29,12 @@ public sealed partial class RssClient(HttpClient http, ProviderHealth health)
     {
         var (status, body) = await ProviderHttp.GetAsync(http, url, $"{ProviderHealth.Rss}:{name}", name, health, ct);
         if (status != HttpStatusCode.OK) throw new UpstreamException($"{name} returned {(int)status}.");
+        return Parse(name, body);
+    }
 
+    /// <summary>The items of an RSS 2.0 or Atom document. Items without a title, link or readable date are skipped.</summary>
+    public static IReadOnlyList<RssItem> Parse(string name, string body)
+    {
         XDocument doc;
         try
         {

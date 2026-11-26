@@ -1,7 +1,7 @@
 import { api } from '../api/client'
 import type { NewsItem } from '../api/types'
 import { LoadError, PanelFrame } from '../components/PanelFrame'
-import { useApi } from '../hooks/useApi'
+import { staleOf, useApi } from '../hooks/useApi'
 import { timeAgo } from '../lib/time'
 import type { PanelProps } from './types'
 
@@ -25,9 +25,9 @@ export function TopPanel({ source, onSourceChange, ...frame }: Props) {
   const items = current ? all.filter((i) => i.provider === current) : all
 
   return (
-    <PanelFrame fn="TOP" title={<span>Top news</span>} {...frame}>
+    <PanelFrame fn="TOP" title={<span>Top news</span>} stale={staleOf(feed)} {...frame}>
       {feed.loading && <TopSkeleton />}
-      {feed.error && <LoadError error={feed.error} what="headlines" />}
+      {feed.error && <LoadError error={feed.error} what="headlines" onRetry={feed.reload} />}
       {feed.data && (
         <div className="news top">
           <div className="toolbar" role="toolbar" aria-label="Filter by source">

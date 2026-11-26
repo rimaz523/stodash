@@ -1,4 +1,4 @@
-import { useEffect, useState, type DragEvent, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { ApiError, api } from '../api/client'
 import type { Quote, SearchResult, Watchlist } from '../api/types'
 import { LoadError, PanelFrame } from '../components/PanelFrame'
@@ -6,6 +6,7 @@ import { RangeBar } from '../components/RangeBar'
 import { useApi } from '../hooks/useApi'
 import { useQuoteStream } from '../hooks/useQuoteStream'
 import * as fmt from '../lib/format'
+import { openRowProps } from '../lib/rows'
 import type { OpenCommand, PanelProps } from './types'
 
 /**
@@ -85,7 +86,7 @@ export function WatchlistPanel({ listName, onSelectList, onOpen, notice, ...fram
   return (
     <PanelFrame fn="W" title={<span>Watchlists</span>} {...frame}>
       {loadError ? (
-        <LoadError error={loadError} what="watchlists" />
+        <LoadError error={loadError} what="watchlists" onRetry={() => { setLoadError(null); setReload((r) => r + 1) }} />
       ) : !lists || !list ? (
         <RowsSkeleton />
       ) : (
@@ -326,6 +327,12 @@ function ListTable({ list, onOpen, onRemove, onReorder }: {
     setKnown((k) => ({ ...k, ...Object.fromEntries(quotes.data!.map((q) => [q.symbol, q])) }))
   }
   const [dragging, setDragging] = useState<string | null>(null)
+  const [moved, setMoved] = useState<{ symbol: string; position: number } | null>(null)
+  const tableRef = useRef<HTMLTableElement>(null)
+  // After a keyboard move the row is re-rendered in its new place; put focus back on it.
+  useEffect(() => {
+    if (moved) tableRef.current?.querySelector<HTMLElement>(`tr[data-symbol="${CSS.escape(moved.symbol)}"]`)?.focus()
+  }, [moved, list.symbols])
 
   if (list.symbols.length === 0)
     return (
@@ -334,7 +341,7 @@ function ListTable({ list, onOpen, onRemove, onReorder }: {
         <span>Add a symbol above, or type W ADD AAPL in the command bar.</span>
       </div>
     )
-  if (quotes.error && Object.keys(known).length === 0) return <LoadError error={quotes.error} what="quotes" />
+  if (quotes.error && Object.keys(known).length === 0) return <LoadError error={quotes.error} what="quotes" onRetry={quotes.reload} />
 
   const drop = (e: DragEvent, target: string) => {
     e.preventDefault()
@@ -342,6 +349,17 @@ function ListTable({ list, onOpen, onRemove, onReorder }: {
     const order = list.symbols.filter((s) => s !== dragging)
     order.splice(order.indexOf(target), 0, dragging)
     setDragging(null)
+    onReorder(order)
+  }
+
+  /** Keyboard reorder (Alt+↑/↓): moves a symbol one place and keeps focus on its row. */
+  const move = (symbol: string, by: -1 | 1) => {
+    const i = list.symbols.indexOf(symbol)
+    const j = i + by
+    if (j < 0 || j >= list.symbols.length) return
+    const order = [...list.symbols]
+    ;[order[i], order[j]] = [order[j], order[i]]
+    setMoved({ symbol, position: j + 1 })
     onReorder(order)
   }
 
@@ -354,10 +372,13 @@ function ListTable({ list, onOpen, onRemove, onReorder }: {
         {marketClosed && <span className="muted">Market closed: prices are the last trade.</span>}
       </div>
       <div className="wl-table-wrap">
-        <table className="wl-table num">
+        <p className="sr-only" aria-live="polite">
+          {moved ? `Moved ${moved.symbol} to position ${moved.position} of ${list.symbols.length}.` : ''}
+        </p>
+        <table className="wl-table num" ref={tableRef}>
           <thead>
             <tr>
-              <th scope="col" className="grip" aria-label="Drag to reorder" />
+              <th scope="col" className="grip" aria-label="Drag, or press Alt and an arrow key, to reorder" />
               <th scope="col">Symbol</th>
               <th scope="col" className="name">Name</th>
               <th scope="col">Last</th>
@@ -390,9 +411,16 @@ function ListTable({ list, onOpen, onRemove, onReorder }: {
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => drop(e, symbol)}
                   onDragEnd={() => setDragging(null)}
-                  className={dragging === symbol ? 'dragging' : undefined}
-                  onClick={(e) => onOpen(`${symbol} DES`, e.shiftKey)}
-                  title={`${symbol}: click for DES, Shift-click for a new panel`}
+                  data-symbol={symbol}
+                  {...openRowProps((n) => onOpen(`${symbol} DES`, n))}
+                  className={`open-row${dragging === symbol ? ' dragging' : ''}`}
+                  onKeyDown={(e) => {
+                    if (e.target === e.currentTarget && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+                      e.preventDefault()
+                      move(symbol, e.key === 'ArrowUp' ? -1 : 1)
+                    } else openRowProps((n) => onOpen(`${symbol} DES`, n)).onKeyDown(e)
+                  }}
+                  title={`${symbol}: click or Enter for DES, Shift for a new panel, Alt ↑↓ or drag to reorder`}
                 >
                   <td className="grip" aria-hidden="true">⋮⋮</td>
                   <th scope="row" className="sym mono">

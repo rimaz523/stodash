@@ -489,7 +489,7 @@ export function screener(params: URLSearchParams): Reply {
     universe: 'S&P 500', total: SCREEN_ROWS.length, matched: matches.length,
     rows: sorted.slice(0, num('limit') ?? 100),
     sectors: sectors.map((s) => ({ sector: s, count: SCREEN_ROWS.filter((r) => r.sector === s).length })),
-    universeAsOf: '2026-11-26T04:00:00Z', pricesAsOf: '2026-11-26T15:30:00Z', refreshing: false,
+    universeAsOf: '2026-11-26T04:00:00Z', pricesAsOf: new Date().toISOString(), refreshing: false,
     source: 'S&P 500 list: github.com/datasets (from Wikipedia) · prices: Yahoo',
   }
   return ok(body)
@@ -525,6 +525,11 @@ export class MockApi {
   /** Answer requests whose "path?query" matches `pattern` with `reply` instead of the default. Latest wins. */
   on(pattern: RegExp, reply: Reply | ((url: URL) => Reply)) {
     this.overrides.unshift([pattern, reply])
+  }
+
+  /** Drops every override, so the default answers apply again (e.g. the API comes back). */
+  clear() {
+    this.overrides.length = 0
   }
 
   async install(page: Page) {

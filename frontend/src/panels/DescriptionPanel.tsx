@@ -4,7 +4,7 @@ import type { CompanyProfile, Quote } from '../api/types'
 import { LoadError, PanelFrame } from '../components/PanelFrame'
 import { QuoteHeader } from '../components/QuoteHeader'
 import { RangeBar } from '../components/RangeBar'
-import { useApi } from '../hooks/useApi'
+import { staleOf, useApi } from '../hooks/useApi'
 import * as fmt from '../lib/format'
 import { FunctionSwitch, PanelTitle } from './FunctionSwitch'
 import type { SymbolPanelProps } from './types'
@@ -20,12 +20,13 @@ export function DescriptionPanel({ symbol, onSwitch, ...frame }: SymbolPanelProp
   return (
     <PanelFrame
       fn="DES"
+      stale={staleOf(quote, profile)}
       title={<PanelTitle symbol={symbol} name={name} />}
       actions={<FunctionSwitch current="DES" onSwitch={onSwitch} />}
       {...frame}
     >
       {fatal ? (
-        <LoadError error={fatal} what={symbol} />
+        <LoadError error={fatal} what={symbol} onRetry={() => { quote.reload(); profile.reload() }} />
       ) : (
         <>
           <QuoteHeader quote={quote.data} loading={quote.loading} />
@@ -37,7 +38,7 @@ export function DescriptionPanel({ symbol, onSwitch, ...frame }: SymbolPanelProp
             </div>
             <div>
               {profile.loading && <SkeletonRows rows={6} />}
-              {profile.error && <LoadError error={profile.error} what="the company profile" />}
+              {profile.error && <LoadError error={profile.error} what="the company profile" onRetry={profile.reload} />}
               {profile.data && <Profile profile={profile.data} />}
             </div>
           </div>

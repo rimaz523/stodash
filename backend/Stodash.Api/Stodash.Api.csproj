@@ -16,4 +16,8 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.15" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Stodash.Api.Tests" />
+  </ItemGroup>
+
 </Project>

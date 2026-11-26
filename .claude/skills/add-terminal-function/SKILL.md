@@ -46,7 +46,10 @@ Work through these steps in order, then run the `verify-stodash` skill.
    Validate any persisted setting when rendering (fall back to a default).
 10. **Panel component:** create `panels/<Name>Panel.tsx`.
     - Wrap in `PanelFrame` with `fn`, `PanelTitle` and `FunctionSwitch` (ticker functions).
-    - Load with `useApi(key, loader, refreshMs?)`. Show skeletons while loading and `LoadError` on failure.
+    - Load with `useApi(key, loader, refreshMs?)`. Show skeletons while loading, `LoadError` with `onRetry={x.reload}` on
+      failure, a real empty state, and pass `stale={staleOf(...)}` to `PanelFrame`.
+    - Rows that open something use `openRowProps` from `lib/rows.ts` (click, Enter, Shift+Enter).
+    - Colors only from CSS tokens (both themes); charts via `chartTheme()`. Add the panel to `e2e/a11y.spec.ts`.
     - Reuse `QuoteHeader`, the `.section-title` / `.stats` / `.facts` styles, and the formatters in `lib/format.ts`.
     - Put new CSS in `index.css` under a `/* ---- XX panel */` banner, using only theme variables.
 11. **Routing:** render the panel for its kind in the `panels.map` in `App.tsx`. A panel that lists symbols opens

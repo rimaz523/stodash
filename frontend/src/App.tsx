@@ -5,8 +5,11 @@ import { Brand, Clocks, StatusBar } from './components/Chrome'
 import { CommandBar } from './components/CommandBar'
 import { MarketStrip } from './components/MarketStrip'
 import { Splitters } from './components/Splitters'
+import { ThemeToggle } from './components/ThemeToggle'
+import { RECONNECTED, useApi } from './hooks/useApi'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { parseCommand, type FunctionCode } from './lib/commands'
+import { setTheme, toggleTheme } from './lib/themeMode'
 import { EVEN, MAX_PANELS, findLayout, isWorkspace, saveLayout, type Sizes, type Workspace } from './lib/workspace'
 import { ChartPanel } from './panels/ChartPanel'
 import { CryptoPanel } from './panels/CryptoPanel'
@@ -60,6 +63,15 @@ export default function App() {
   const [toast, setToast] = useState<Toast>()
   // Bumped when a LAYOUT command changes the saved layouts, so an open LAYOUT panel reloads its list.
   const [layoutsVersion, setLayoutsVersion] = useState(0)
+  // One health poll drives the status bar and the offline banner: every 5 s while the API is unreachable, else 30 s.
+  const [offline, setOffline] = useState(false)
+  const health = useApi('health', (signal) => api.health(signal), offline ? 5_000 : 30_000)
+  const unreachable = !!health.error || health.stale
+  if (unreachable !== offline && !health.loading) setOffline(unreachable)
+  // Back online: panels that failed or went stale meanwhile load again.
+  useEffect(() => {
+    if (!offline && health.updatedAt) window.dispatchEvent(new Event(RECONNECTED))
+  }, [offline]) // eslint-disable-line react-hooks/exhaustive-deps
   const notify = useCallback((text: string, error = false) => setToast({ id: Date.now(), text, error }), [])
 
   useEffect(() => {
@@ -186,6 +198,11 @@ export default function App() {
             .catch((e: Error) => notify(e.message, true))
           return null
         }
+
+        case 'theme':
+          if (cmd.mode) setTheme(cmd.mode)
+          else toggleTheme()
+          return null
 
         case 'eco': {
           const existing = panels.find((p) => p.kind === 'ECO')
@@ -325,6 +342,9 @@ export default function App() {
       case 'KeyL':
         runCommand('LAYOUT', panels.length < MAX_PANELS)
         break
+      case 'KeyT':
+        toggleTheme()
+        break
       default:
         return
     }
@@ -372,9 +392,20 @@ export default function App() {
         <Brand />
         <CommandBar onRun={runCommand} />
         <Clocks />
+        <ThemeToggle />
       </header>
 
       <MarketStrip onOpen={(symbol, newPanel) => runCommand(`${symbol} GP`, newPanel)} />
+
+      {offline && (
+        <div className="offline-banner" role="alert">
+          <strong>Can't reach the Stodash API.</strong> Start it with <code>{'scripts\\start.cmd'}</code> (or{' '}
+          <code>dotnet run --project backend/Stodash.Api</code>). Panels reload by themselves when it's back.
+          <button className="chip" onClick={health.reload}>
+            Try now
+          </button>
+        </div>
+      )}
 
       <main className="workspace" data-count={Math.max(1, shown)} style={gridVars}>
         {panels.length === 0 && <EmptyState onRun={(c) => runCommand(c, true)} />}
@@ -403,7 +434,7 @@ export default function App() {
         </div>
       )}
 
-      <StatusBar panelCount={panels.length} />
+      <StatusBar panelCount={panels.length} health={health} />
     </div>
   )
 

@@ -7,6 +7,7 @@ import { defineConfig, devices } from '@playwright/test'
  * - `npm run test:e2e`: the default suite. Every /api call is answered by e2e/mock-api.ts, so no backend is needed
  *   and results don't depend on Yahoo or market hours.
  * - `npm run test:e2e:live`: a short smoke test against the real API on :5080 (start it first).
+ * - `npm run screenshots`: regenerates the README images in docs/screenshots from the mocked API's fake data.
  */
 const PORT = 5199
 
@@ -25,8 +26,13 @@ export default defineConfig({
   projects: [
     {
       name: 'mocked',
-      testIgnore: /live\//,
+      testIgnore: /(live|screenshots)\//,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
+    },
+    {
+      name: 'screenshots',
+      testMatch: /screenshots\/.*\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
     },
     {
       name: 'live',

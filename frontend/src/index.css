@@ -1,4 +1,8 @@
-/* Stodash — modern dark theme. Chart colors in src/lib/theme.ts mirror these tokens. */
+/*
+ * Stodash themes. Dark is the default; [data-theme='light'] on <html> switches to light (see lib/themeMode.ts).
+ * Every text color passes WCAG AA (4.5:1) on every background in both themes. Canvas charts read these tokens at
+ * runtime (lib/theme.ts), so change colors here only.
+ */
 :root {
   --bg: #080b10;
   --bg-raised: #0e1219;
@@ -7,18 +11,29 @@
   --hover: #18202c;
   --border: #1d2532;
   --border-strong: #2a3444;
+  /* Form controls need 3:1 against the panel (WCAG 1.4.11). */
+  --input-border: #5f6b80;
 
   --text: #e6eaf0;
   --text-2: #a7b0bf;
-  --muted: #6b7587;
+  --muted: #8590a2;
 
-  --accent: #5b8cff;
-  --accent-soft: rgba(91, 140, 255, 0.14);
+  --accent: #6b97ff;
+  --accent-soft: rgba(107, 151, 255, 0.14);
+  /* Text on a solid accent background. */
+  --on-accent: #081020;
   --up: #2bd389;
   --up-soft: rgba(43, 211, 137, 0.12);
-  --down: #ff5d6c;
-  --down-soft: rgba(255, 93, 108, 0.12);
+  --down: #ff6b78;
+  --down-soft: rgba(255, 107, 120, 0.12);
   --warn: #f5b83d;
+  --violet: #b78cff;
+  --chart-grid: #161d28;
+  --shadow: rgba(0, 0, 0, 0.5);
+  --error-bg: #2a1418;
+  --error-border: #5a2630;
+  --error-text: #ffb3bb;
+  --brand-tile: #131923;
 
   --radius: 10px;
   --radius-sm: 6px;
@@ -32,6 +47,39 @@
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme='light'] {
+  --bg: #f2f4f7;
+  --bg-raised: #ffffff;
+  --panel: #ffffff;
+  --panel-head: #f7f8fa;
+  --hover: #eceff4;
+  --border: #dde2ea;
+  --border-strong: #c5ccd8;
+  --input-border: #848ea0;
+
+  --text: #111827;
+  --text-2: #3b4556;
+  --muted: #5a6475;
+
+  --accent: #2457d6;
+  --accent-soft: rgba(36, 87, 214, 0.1);
+  --on-accent: #ffffff;
+  --up: #067a4b;
+  --up-soft: rgba(6, 122, 75, 0.1);
+  --down: #c42339;
+  --down-soft: rgba(196, 35, 57, 0.08);
+  --warn: #8f5b00;
+  --violet: #7a3fd1;
+  --chart-grid: #eef1f5;
+  --shadow: rgba(17, 24, 39, 0.16);
+  --error-bg: #fdecee;
+  --error-border: #f2b8c0;
+  --error-text: #9b1c2e;
+  --brand-tile: #ffffff;
+
+  color-scheme: light;
 }
 
 *,
@@ -104,11 +152,15 @@ a:hover {
 
 /* ------------------------------------------------------------------ app shell */
 
+/* A column: top bar, market strip, (offline banner), workspace, status bar. */
 .app {
-  display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+.app > .workspace {
+  flex: 1;
 }
 
 .topbar {
@@ -179,7 +231,7 @@ a:hover {
   height: 40px;
   padding: 0 12px;
   background: var(--panel);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -232,7 +284,7 @@ a:hover {
   background: var(--panel-head);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 16px 40px var(--shadow);
   max-height: 360px;
   overflow-y: auto;
 }
@@ -277,9 +329,9 @@ a:hover {
   right: 0;
   padding: 9px 12px;
   border-radius: var(--radius-sm);
-  background: #2a1418;
-  border: 1px solid #5a2630;
-  color: #ffb3bb;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  color: var(--error-text);
   font-size: 13px;
 }
 
@@ -402,6 +454,15 @@ a:hover {
 .splitter:focus-visible {
   outline: none;
 }
+.splitter:focus-visible::after {
+  opacity: 1;
+}
+.splitter.col:focus-visible::after {
+  width: 4px;
+}
+.splitter.row:focus-visible::after {
+  height: 4px;
+}
 
 @media (max-width: 1000px) {
   .workspace,
@@ -477,7 +538,7 @@ a:hover {
   background: var(--accent-soft);
 }
 .panel.active .panel-head .fn {
-  color: #fff;
+  color: var(--on-accent);
   background: var(--accent);
 }
 .panel-head .title {
@@ -857,10 +918,10 @@ a:hover {
   margin-right: 3px;
 }
 .legend .sma20 {
-  color: #f5b83d;
+  color: var(--warn);
 }
 .legend .sma50 {
-  color: #b78cff;
+  color: var(--violet);
 }
 .chart-overlay {
   position: absolute;
@@ -1002,7 +1063,6 @@ a:hover {
 }
 .chip.on .count {
   color: inherit;
-  opacity: 0.75;
 }
 .cf-table {
   width: calc(100% - 24px);
@@ -1093,7 +1153,7 @@ a:hover {
 .wl-add input {
   height: 26px;
   padding: 0 8px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius-sm);
   background: var(--bg-raised);
   color: var(--text);
@@ -1661,7 +1721,7 @@ a:hover {
   background: var(--panel-head);
   color: var(--up);
   font-size: 13px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px var(--shadow);
   animation: toast-in 0.15s ease-out;
 }
 .toast.error {
@@ -1719,7 +1779,7 @@ a:hover {
 .eqs-field input {
   height: 28px;
   padding: 0 8px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius-sm);
   background: var(--bg-raised);
   color: var(--text);
@@ -1857,4 +1917,88 @@ a:hover {
   align-items: center;
   gap: 4px;
   font-size: 12px;
+}
+
+/* ------------------------------------------------- phase 5: states and a11y */
+
+.chip.retry {
+  justify-self: center;
+  margin-top: 4px;
+  border-color: var(--input-border);
+}
+.chip.stale {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--warn);
+  font-weight: 500;
+}
+.stale-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+.offline-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 10px 10px 0;
+  padding: 9px 12px;
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-sm);
+  background: var(--error-bg);
+  color: var(--error-text);
+  font-size: 13px;
+}
+.offline-banner code {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.offline-banner .chip {
+  margin-left: auto;
+  color: inherit;
+  border-color: var(--error-border);
+}
+.eqs-old {
+  margin: 0 12px 6px;
+  font-size: 12px;
+  color: var(--warn);
+}
+
+/* Rows that open something (W, FX, CRYPTO, EQS) are focusable; show where focus is. */
+tr.open-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+tr.open-row:focus-visible > * {
+  background: var(--hover);
+}
+.panel-body:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ------------------------------------------------------------- theme toggle */
+
+.theme-toggle {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text-2);
+}
+.theme-toggle:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+.brand-mark rect {
+  fill: var(--brand-tile);
+  stroke: var(--border-strong);
+}
+.brand-mark path {
+  stroke: var(--accent);
 }

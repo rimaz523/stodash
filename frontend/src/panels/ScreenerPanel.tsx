@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { ScreenerQuery, ScreenerResult, ScreenerRow, ScreenerSort } from '../api/types'
 import { LoadError, PanelFrame } from '../components/PanelFrame'
-import { useApi } from '../hooks/useApi'
+import { staleOf, useApi } from '../hooks/useApi'
 import * as fmt from '../lib/format'
+import { openRowProps } from '../lib/rows'
 import type { OpenCommand, PanelProps, ScreenFilters } from './types'
 
 const PAGE = 100
+/** Prices older than this mean the background refresh keeps failing (the snapshot is normally under 15 minutes old). */
+const OLD_PRICES_MS = 24 * 3600_000
 const ALL = 600
 
 type NumKey = Exclude<keyof ScreenFilters, 'sector'>
@@ -91,7 +94,7 @@ export function ScreenerPanel({ screen, sort, desc, onChange, onOpen, ...frame }
   const rangeError = RANGES.find(([, min, max]) => screen[min] !== undefined && screen[max] !== undefined && screen[min]! > screen[max]!)
 
   return (
-    <PanelFrame fn="EQS" title={<span>Equity screener · {data?.universe ?? 'S&P 500'}</span>} {...frame}>
+    <PanelFrame fn="EQS" title={<span>Equity screener · {data?.universe ?? 'S&P 500'}</span>} stale={staleOf(result)} {...frame}>
       <div className="eqs">
         <div className="eqs-filters">
           <label className="eqs-field">
@@ -139,7 +142,7 @@ export function ScreenerPanel({ screen, sort, desc, onChange, onOpen, ...frame }
         ) : (
           <>
             {result.loading && !data && <div className="skeleton" style={{ height: 320, margin: '4px 12px' }} aria-hidden="true" />}
-            {result.error && <LoadError error={result.error} what="the screener" />}
+            {result.error && <LoadError error={result.error} what="the screener" onRetry={result.reload} />}
           </>
         )}
         {data && !rangeError && (
@@ -156,6 +159,12 @@ export function ScreenerPanel({ screen, sort, desc, onChange, onOpen, ...frame }
               )}
               {pending && <span className="muted"> · updating…</span>}
             </div>
+            {(result.updatedAt ?? 0) - Date.parse(data.pricesAsOf) > OLD_PRICES_MS && (
+              <p className="eqs-old" role="status">
+                These prices are from {new Date(data.pricesAsOf).toLocaleString()}. Yahoo hasn't answered since, so the
+                screen uses the last good snapshot.
+              </p>
+            )}
             {data.rows.length === 0 ? (
               <div className="state">
                 <strong>Nothing matches</strong>
@@ -200,7 +209,7 @@ export function ScreenerPanel({ screen, sort, desc, onChange, onOpen, ...frame }
 
 function Row({ row: r, onOpen }: { row: ScreenerRow; onOpen: OpenCommand }) {
   return (
-    <tr onClick={(e) => onOpen(`${r.symbol} DES`, e.shiftKey)} title={`Open ${r.name} (${r.symbol})`}>
+    <tr {...openRowProps((n) => onOpen(`${r.symbol} DES`, n))} title={`Open ${r.name} (${r.symbol})`}>
       <th scope="row" className="text mono">{r.symbol}</th>
       <td className="text name">{r.name}</td>
       <td className="text muted sector" title={r.industry ?? undefined}>{r.sector}</td>

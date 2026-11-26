@@ -2,7 +2,7 @@ import { api } from '../api/client'
 import type { NewsItem } from '../api/types'
 import { LoadError, PanelFrame } from '../components/PanelFrame'
 import { QuoteHeader } from '../components/QuoteHeader'
-import { useApi } from '../hooks/useApi'
+import { staleOf, useApi } from '../hooks/useApi'
 import { timeAgo } from '../lib/time'
 import { FunctionSwitch, PanelTitle } from './FunctionSwitch'
 import type { SymbolPanelProps } from './types'
@@ -19,17 +19,18 @@ export function NewsPanel({ symbol, onSwitch, ...frame }: SymbolPanelProps) {
   return (
     <PanelFrame
       fn="N"
+      stale={staleOf(quote, news)}
       title={<PanelTitle symbol={symbol} name={quote.data?.name} />}
       actions={<FunctionSwitch current="N" onSwitch={onSwitch} />}
       {...frame}
     >
       {fatal ? (
-        <LoadError error={fatal} what={symbol} />
+        <LoadError error={fatal} what={symbol} onRetry={() => { quote.reload(); news.reload() }} />
       ) : (
         <div className="news">
           <QuoteHeader quote={quote.data} loading={quote.loading} />
           {news.loading && <NewsSkeleton />}
-          {news.error && <LoadError error={news.error} what="news" />}
+          {news.error && <LoadError error={news.error} what="news" onRetry={news.reload} />}
           {news.data && items.length === 0 && (
             <div className="state">
               <strong>No recent headlines</strong>

@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { api } from '../api/client'
 import type { YieldCurve } from '../api/types'
 import { LoadError, PanelFrame } from '../components/PanelFrame'
-import { useApi } from '../hooks/useApi'
+import { staleOf, useApi } from '../hooks/useApi'
 import * as fmt from '../lib/format'
 import { calendarDate } from '../lib/time'
 import type { PanelProps } from './types'
 
-const COLORS = ['var(--accent)', 'var(--warn)', '#b78cff']
+const COLORS = ['var(--accent)', 'var(--warn)', 'var(--violet)']
 
 /** "+12 bp", "−3 bp" */
 const bp = (v: number | null | undefined) =>
@@ -17,10 +17,17 @@ export function YieldCurvePanel(frame: PanelProps) {
   const yc = useApi('yieldcurve', (s) => api.yieldCurve(s), 3_600_000)
 
   return (
-    <PanelFrame fn="YC" title={<span>US Treasury yield curve</span>} {...frame}>
+    <PanelFrame fn="YC" title={<span>US Treasury yield curve</span>} stale={staleOf(yc)} {...frame}>
       {yc.loading && <div className="skeleton" style={{ height: 260, margin: 16 }} aria-hidden="true" />}
-      {yc.error && <LoadError error={yc.error} what="the yield curve" />}
-      {yc.data && <Curve data={yc.data} />}
+      {yc.error && <LoadError error={yc.error} what="the yield curve" onRetry={yc.reload} />}
+      {yc.data && (yc.data.curves[0]?.yields.some(fmt.isNum) ? (
+        <Curve data={yc.data} />
+      ) : (
+        <div className="state">
+          <strong>No yields published</strong>
+          <span>The Treasury's file had no rates. It updates each business day after the close.</span>
+        </div>
+      ))}
     </PanelFrame>
   )
 }

@@ -5,9 +5,10 @@ Stodash is a personal, keyboard-driven market terminal inspired by the Bloomberg
 data, because free provider terms forbid that. Azure hosting for the owner plus one or two signed-in people is planned
 for later (see the roadmap), so design user data (watchlists) with a `UserId`, but don't build hosting or sign-in until asked.
 
-**Status:** Phases 1–4 are done (command bar, `DES`, `GP`, `FA`, `N`, `CF`, `W` with live prices, `ECO`, `YC`,
+**Status:** Phases 1–5 are done (command bar, `DES`, `GP`, `FA`, `N`, `CF`, `W` with live prices, `ECO`, `YC`,
 `FX`, `CRYPTO`, `TOP`, `EQS`, saved layouts, resizable panels, shortcuts, market strip, provider health, database
-cache). Phase 5 (polish) is next, but don't start it until the user asks. See @docs/ROADMAP.md for the phase plans and the decisions already made.
+cache, error/offline/stale states, WCAG AA accessibility, light/dark themes, backend unit tests). Nothing further is
+planned; ask the user before starting new work. See @docs/ROADMAP.md for the phase plans and the decisions already made.
 
 ## Stack (chosen by the user; don't swap)
 
@@ -17,8 +18,10 @@ cache). Phase 5 (polish) is next, but don't start it until the user asks. See @d
 - **Charts:** TradingView `lightweight-charts` v5 (`chart.addSeries(CandlestickSeries, …)` API). Keep its attribution logo; its license requires it.
 - **Database:** SQL Server via EF Core. LocalDB (`(localdb)\MSSQLLocalDB`) for development, Azure SQL when hosted.
   Not SQLite: the user chose SQL Server so the same engine and migrations run locally and on Azure.
-- **Look:** modern dark theme, not the classic Bloomberg black and orange. Tokens live in `frontend/src/index.css`,
-  and `frontend/src/lib/theme.ts` mirrors them for the canvas chart. Change both together.
+- **Look:** modern dark theme (default) plus a light theme, not the classic Bloomberg black and orange. All colors are
+  tokens in `frontend/src/index.css` (`:root` = dark, `:root[data-theme='light']` = light). Canvas charts read them
+  at runtime via `chartTheme()` in `lib/theme.ts`, so don't hard-code colors anywhere. Every text token must keep
+  ≥4.5:1 contrast on every background in both themes (the axe tests in `e2e/a11y.spec.ts` enforce it).
 - Plain CSS with variables. No Tailwind and no UI kit.
 
 ## Commands
@@ -43,21 +46,24 @@ whose local port is ours. `scripts/.pids.json` (gitignored) records the windows 
 Checks to run before calling work done (all must pass cleanly):
 
 ```powershell
-dotnet build backend/Stodash.Api                  # 0 warnings expected
+dotnet build Stodash.slnx                          # API + tests; 0 warnings expected
+dotnet test backend/Stodash.Api.Tests              # 69 xUnit tests for pure logic, ~1 s
 cd frontend; npx tsc -b; npx oxlint src; npx vite build
 ```
 
 Browser tests (Playwright, in `frontend/e2e`) must also pass:
 
 ```powershell
-cd frontend; npm run test:e2e        # 81 tests against a mocked API; no backend needed, ~20 s
+cd frontend; npm run test:e2e        # 100 tests (incl. axe a11y in both themes) against a mocked API, ~25 s
 cd frontend; npm run test:e2e:live   # 11 smoke tests against the real API on :5080 (start it first)
+cd frontend; npm run screenshots     # regenerates docs/screenshots/*.png from fake data (after visual changes)
 ```
 
 The mocked suite runs its own Vite server on :5199 and answers every `/api` call from `e2e/mock-api.ts`, whose
 fixtures are typed with `src/api/types.ts`. When an API record changes, update the fixture too. The mock also fakes
-`/ws/quotes` (`mock.streamState`, `mock.pushTrades(...)`) and keeps watchlists and layouts in memory (`mock.watchlists`, `mock.layouts`). There are no backend
-unit tests yet. Also verify by curling the API and using the app in a browser; the `/verify-stodash` skill has the
+`/ws/quotes` (`mock.streamState`, `mock.pushTrades(...)`) and keeps watchlists and layouts in memory (`mock.watchlists`, `mock.layouts`); `mock.clear()` drops overrides.
+Backend unit tests (xUnit) live in `backend/Stodash.Api.Tests` and see `internal` members (`InternalsVisibleTo`): keep
+testable logic in static methods (e.g. `ScreenerService.Screen`, `RssClient.Parse`). Also verify by curling the API and using the app in a browser; the `/verify-stodash` skill has the
 full checklist.
 
 ## Architecture
@@ -102,13 +108,16 @@ frontend/src/
   App.tsx                      Workspace state (≤4 panels, active, sizes, maximized) in localStorage; command
                                routing; LAYOUT commands; keyboard shortcuts; toast for command results
   lib/workspace.ts             Workspace shape + isWorkspace validator, what a layout saves (toSaved), saveLayout
+  lib/themeMode.ts + theme.ts  Light/dark store (useTheme, setTheme; "stodash.theme.v1") + chartTheme() from CSS tokens
+  lib/rows.ts                  openRowProps: click/Enter/Shift+Enter for rows that open something
   components/Splitters.tsx     Drag/keyboard handles that set the grid's column and row shares (--c1/--r1 CSS vars)
   lib/commands.ts              Command parser + FUNCTIONS / GLOBAL_COMMANDS registries
   components/CommandBar.tsx    Autocomplete (search API + function list), history, global key capture
   components/PriceChart.tsx    lightweight-charts wrapper: candles/area, SMA20/50, volume, legend
   panels/                      DES, GP, FA, N, CF (symbol panels); W, ECO, YC, FX, CRYPTO, TOP, EQS, LAYOUT, HELP (global);
                                PanelFrame wraps each. panels/types.ts: SymbolSpec | GlobalSpec, GLOBAL_KINDS
-  hooks/useApi.ts              Fetch-by-key with abort, background refresh, and keeps last good data
+  hooks/useApi.ts              Fetch-by-key with abort, background refresh, reload(), stale + updatedAt; reloads on the
+                               RECONNECTED event; staleOf(...) feeds PanelFrame's "Updated Xm ago" badge
   hooks/useQuoteStream.ts      One /ws/quotes connection per W panel: status, live symbols, latest trades
   api/client.ts + types.ts     Typed client; types mirror the C# records by hand
 frontend/e2e/                  Playwright: fixtures.ts (auto-installed mock, openWith/panel/run helpers),
@@ -174,6 +183,9 @@ frontend/e2e/                  Playwright: fixtures.ts (auto-installed mock, ope
 - Batch endpoint `/api/quotes?symbols=` skips symbols that fail instead of failing the whole request (≤20 symbols).
 - Panel/workspace state and chart prefs persist in localStorage under keys ending in `.v1`. Bump the version if
   the shape changes, and the validator falls back to defaults.
+- **Panel states:** load with `useApi`; show `LoadError` with `onRetry={x.reload}`, pass `stale={staleOf(...)}` to
+  PanelFrame, and give each panel a real empty state. Rows that open something use `openRowProps`. Don't put `role`
+  "status" on new live regions inside panels without checking e2e locators (`getByRole('status')` is used in tests).
 - Frontend uses TypeScript 7 (`tsc -b`) with `erasableSyntaxOnly`: no enums, no parameter properties.
 
 ## Working with the user

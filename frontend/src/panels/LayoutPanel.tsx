@@ -107,7 +107,7 @@ export function LayoutPanel({ current, onLoad, reloadKey, ...frame }: Props) {
           </p>
         )}
 
-        {loadError && <LoadError error={loadError} what="saved layouts" />}
+        {loadError && <LoadError error={loadError} what="saved layouts" onRetry={() => setReload((r) => r + 1)} />}
         {!layouts && !loadError && <div className="skeleton" style={{ height: 120, margin: '4px 12px' }} aria-hidden="true" />}
         {layouts?.length === 0 && (
           <div className="state">

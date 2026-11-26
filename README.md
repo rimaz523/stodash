@@ -1,10 +1,22 @@
 # Stodash
 
 A personal, keyboard-driven market terminal inspired by the Bloomberg Terminal, built on free data.
-**Phases 1–4:** command bar, company description (`DES`), price charts (`GP`), financial statements (`FA`),
+**Phases 1–5 (all done):** command bar, company description (`DES`), price charts (`GP`), financial statements (`FA`),
 company news (`N`), SEC filings (`CF`), watchlists with live prices (`W`), the US economy (`ECO`), the Treasury yield
 curve (`YC`), currencies (`FX`), crypto (`CRYPTO`), top market headlines (`TOP`), an S&P 500 screener (`EQS`),
-saved layouts (`LAYOUT`), resizable panels and more keyboard shortcuts.
+saved layouts (`LAYOUT`), resizable panels, keyboard shortcuts, and dark and light themes that meet WCAG AA contrast.
+
+![Stodash in dark mode: description, chart, watchlist and top news](docs/screenshots/overview-dark.png)
+
+<details>
+<summary>More screenshots (light mode, research, macro)</summary>
+
+![Light mode](docs/screenshots/overview-light.png)
+![Financials and the S&P 500 screener](docs/screenshots/research-dark.png)
+![Economy, yield curve, currencies and crypto in light mode](docs/screenshots/macro-light.png)
+
+The screenshots use the test suite's made-up data. Regenerate them with `cd frontend; npm run screenshots`.
+</details>
 
 - **Backend:** ASP.NET Core minimal API on .NET 10 (`backend/Stodash.Api`)
 - **Frontend:** React 19 + TypeScript + Vite, charts by TradingView Lightweight Charts (`frontend`)
@@ -117,14 +129,18 @@ Press `Ctrl+C` in each terminal.
 Use these to confirm everything compiles, for example after editing code:
 
 ```powershell
-dotnet build backend/Stodash.Api
+dotnet build Stodash.slnx
+```
+
+```powershell
+dotnet test backend/Stodash.Api.Tests
 ```
 
 ```powershell
 cd frontend; npx tsc -b; npx oxlint src; npm run build; cd ..
 ```
 
-The .NET build should end with `0 Warning(s)` and `0 Error(s)`. The `tsc` and `oxlint` steps print nothing when everything
+The .NET build should end with `0 Warning(s)` and `0 Error(s)`, and `dotnet test` with `Passed!`. The `tsc` and `oxlint` steps print nothing when everything
 is fine, and `npm run build` ends with `✓ built` and writes the optimized site to `frontend/dist`.
 
 To run that optimized build instead of the dev server, start the API as in step 3, then:
@@ -173,7 +189,7 @@ Then:
 dotnet user-secrets set "Fred:ApiKey" "YOUR_KEY" --project backend/Stodash.Api
 ```
 
-Restart the API afterwards. Until then, `ECO` shows how to set the key, and everything else works.
+Restart the API afterwards. Until a key is set, `ECO` shows how to set it, and everything else works.
 
 ### Optional: Finnhub
 
@@ -214,13 +230,14 @@ in red, and "● Live" appears while watchlist prices are streaming.
 
 ## Running the tests
 
-Stodash has browser tests written with [Playwright](https://playwright.dev). They open the app in a real Chromium
-browser and click and type through it the way you would. There are two suites:
+Stodash has browser tests written with [Playwright](https://playwright.dev), which open the app in a real Chromium
+browser and click and type through it the way you would, plus fast unit tests for the backend's parsing and filtering:
 
-| Suite | Command (from `frontend`) | Needs the backend? | What it checks |
+| Suite | Command | Needs the backend? | What it checks |
 |---|---|---|---|
-| **Main** (81 tests, ~20 s) | `npm run test:e2e` | No | Every usual scenario, using a fake API with fixed data |
-| **Live smoke** (11 tests) | `npm run test:e2e:live` | Yes, on :5080 | Every function loads with real data (W needs LocalDB) |
+| **Main** (100 tests, ~25 s) | `npm run test:e2e` (from `frontend`) | No | Every usual scenario, using a fake API with fixed data, plus automated accessibility checks |
+| **Live smoke** (11 tests) | `npm run test:e2e:live` (from `frontend`) | Yes, on :5080 | Every function loads with real data (W needs LocalDB) |
+| **Backend unit** (69 tests, ~1 s) | `dotnet test backend/Stodash.Api.Tests` | No | Symbol rules, JSON readers, RSS and CSV parsing, screener filtering, FA/CF mapping, layout checks |
 
 The main suite covers:
 - the default layout, the market strip and the status bar;
@@ -229,6 +246,9 @@ The main suite covers:
 - every panel: FA, N and CF; watchlists (create, rename, delete, add, remove, `W ADD`, live prices through a
   simulated stream, the polling fallback); ECO, YC, FX and CRYPTO; TOP, EQS and saved layouts;
 - resizing panels by mouse and keyboard, maximizing, and the Alt shortcuts;
+- Retry buttons, "stale" badges, the offline banner, empty states, keyboard-operable rows, and the light/dark switch;
+- **accessibility:** [axe](https://github.com/dequelabs/axe-core) checks every panel against WCAG 2.1 A and AA in both
+  themes (`e2e/a11y.spec.ts`);
 - settings that survive a reload, and what happens when the backend, the database or a provider fails.
 
 Its fake API lives in `frontend/e2e/mock-api.ts`, so results never depend on Yahoo, SEC or market hours.
@@ -251,7 +271,7 @@ cd frontend; npm run test:e2e
 ```
 
 You don't need to start anything first. The tests start their own copy of the web app on http://localhost:5199 and
-stop it afterwards, so they won't clash with an app you have open on :5173. A passing run ends with `81 passed`.
+stop it afterwards, so they won't clash with an app you have open on :5173. A passing run ends with `100 passed`.
 
 ### 3. Run the live smoke tests (optional)
 
@@ -292,7 +312,7 @@ action. The files are in `frontend/test-results` and `frontend/playwright-report
 
 ### Adding a test
 
-Specs live in `frontend/e2e`, one file per area (`shell`, `command-bar`, `financials`, `news`, `filings`, `top`, `screener`, `layouts`, `workspace`, ...). Import
+Specs live in `frontend/e2e`, one file per area (`shell`, `command-bar`, `financials`, `news`, `filings`, `top`, `screener`, `layouts`, `workspace`, `polish`, `a11y`, ...). Import
 `test` and the helpers from `./fixtures.ts`. The fake API is installed automatically for every test, and
 `openWith(page, panels)` starts the app with a given layout. To simulate a failure, override a route:
 
@@ -327,6 +347,7 @@ Type into the command bar (or just start typing anywhere):
 | `LAYOUT SAVE Morning` | Save the open panels and their sizes as "Morning" (saving again replaces it) |
 | `LAYOUT Morning` / `LAYOUT DEL Morning` | Load or delete a saved layout |
 | `HELP` | Commands, ticker formats and shortcuts |
+| `THEME` | Switch between dark and light (`THEME LIGHT` / `THEME DARK`; or the sun/moon button at the top right) |
 | `CLEAR` | Close all panels |
 
 Ticker formats: indexes `^GSPC`, FX `EURUSD=X`, crypto `BTC-USD`, futures `GC=F`, non-US `RY.TO`, `VOD.L`.
@@ -344,7 +365,10 @@ Ticker formats: indexes `^GSPC`, FX `EURUSD=X`, crypto `BTC-USD`, futures `GC=F`
 | `Alt [` / `Alt ]` | Move the active panel earlier / later |
 | `Alt L` | Open saved layouts |
 | `Alt Shift 1–9` | Load saved layout 1–9 |
+| `Alt T` | Switch between dark and light |
 | `?` | Open help |
+| `Tab`, then `Enter` on a row | In W, FX, CRYPTO and EQS: open that row (`Shift Enter`: in a new panel) |
+| `Alt ↑` / `Alt ↓` on a W row | Move that symbol up or down the watchlist |
 
 Drag the gap between panels to resize them. A focused divider also moves with the arrow keys, and Enter or a
 double-click evens it out.
@@ -353,6 +377,10 @@ Click a market in the top strip to chart it (Shift-click for a new panel). In `W
 opens it in another panel so the list stays put (Shift-click: a new panel). `W` followed by a function, like
 `W DES`, means the ticker W (Wayfair). The layout, chart settings and command history are saved in your browser's
 local storage. Watchlists and saved layouts are kept in the database.
+
+When a refresh fails, the panel keeps the last data and shows **Updated 5m ago** in its title bar; click it to retry.
+A panel that couldn't load at all has a **Retry** button. If the API itself is down, one banner says so, and panels
+reload by themselves when it's back.
 
 ## API
 
@@ -399,6 +427,7 @@ also rebuilds it once a day.
 ## Layout
 
 ```
+backend/Stodash.Api.Tests/      xUnit tests for the pure parsing, mapping and filtering logic
 backend/Stodash.Api/
   Program.cs                 DI, error handling, CORS, OpenAPI
   Endpoints/                 Route definitions: market, watchlists, layouts, macro (+ TOP, EQS, /ws/quotes)
@@ -413,11 +442,13 @@ backend/Stodash.Api/
   Infrastructure/            Errors, lenient JSON readers, provider health, the two-level cache, current user,
                              and the LocalDB-on-ARM64 workaround
 frontend/src/
-  App.tsx                    Workspace: panels, command routing, shortcuts
-  components/                Command bar, market strip, charts, sparkline, quote header, panel splitters, chrome
+  App.tsx                    Workspace: panels, command routing, shortcuts, offline banner
+  components/                Command bar, market strip, charts, sparkline, quote header, panel splitters, theme toggle, chrome
   hooks/                     useApi, useLocalStorage, useQuoteStream (live prices)
   panels/                    DES, GP, FA, N, CF, W, ECO, YC, FX, CRYPTO, TOP, EQS, LAYOUT and HELP panels
-  lib/                       Command parser, workspace shape and layout saving, formatting, time zones, theme
+  lib/                       Command parser, workspace shape and layout saving, theme (mode + chart colors), formatting, time zones
+frontend/e2e/                Playwright: one spec per area, a11y checks, live/ smoke tests, screenshots/ for the README
+docs/                        ROADMAP.md and the README screenshots
   api/                       Typed API client
 ```
 
@@ -436,7 +467,7 @@ frontend/src/
   is included. A feed that fails is named in the panel and the others still show.
 - `EQS` covers the S&P 500 only. P/E filters leave out companies with losses (no P/E). Prices are as of the latest
   snapshot, at most about 15 minutes old while you're screening.
-- `ECO` needs a FRED key. FRED's data comes out monthly, weekly or quarterly, so "latest" can be a few weeks old.
+- `ECO` needs a FRED key (see above). FRED's data comes out monthly, weekly or quarterly, so "latest" can be a few weeks old.
 - On Windows on ARM (e.g. a Surface), LocalDB is x64-only, so the API connects to it through its named pipe, which it
   looks up automatically. If watchlists say the database is unavailable, run `sqllocaldb start MSSQLLocalDB`.
 
@@ -446,4 +477,4 @@ frontend/src/
 2. ~~Core research: financial statements (`FA`), news (`N`), SEC filings (`CF`)~~ ✅
 3. ~~Live and macro: streaming watchlists (`W`), economics (`ECO`), yield curve (`YC`), `FX`, `CRYPTO`, persistent cache~~ ✅
 4. ~~Power features: top news (`TOP`), screener (`EQS`), saved layouts, resizable panels, more shortcuts~~ ✅
-5. Polish
+5. ~~Polish: error and empty states, accessibility (WCAG AA), light/dark themes, backend unit tests, screenshots~~ ✅

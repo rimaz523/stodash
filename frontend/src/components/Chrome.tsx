@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import { api } from '../api/client'
 import { PROVIDERS, type Health, type ProviderName, type ProviderStatus } from '../api/types'
 import { clock } from '../lib/time'
-import { useApi } from '../hooks/useApi'
+import type { ApiState } from '../hooks/useApi'
 
 const CLOCKS: [label: string, tz: string][] = [
   ['NEW YORK', 'America/New_York'],
@@ -14,10 +13,10 @@ export function Brand() {
   return (
     <div className="brand">
       <svg className="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
-        <rect width="32" height="32" rx="7" fill="#131923" stroke="#2a3444" />
-        <path d="M6 22l6-7 5 4 9-10" fill="none" stroke="#5b8cff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        <rect width="32" height="32" rx="7" />
+        <path d="M6 22l6-7 5 4 9-10" fill="none" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      Stodash <small>phase 4</small>
+      Stodash <small>phase 5</small>
     </div>
   )
 }
@@ -41,9 +40,9 @@ export function Clocks() {
   )
 }
 
-export function StatusBar({ panelCount }: { panelCount: number }) {
-  const health = useApi('health', (signal) => api.health(signal), 30_000)
-  const online = !!health.data && !health.error
+/** `health` comes from App, which also uses it for the offline banner. */
+export function StatusBar({ panelCount, health }: { panelCount: number; health: ApiState<Health> }) {
+  const online = !!health.data && !health.error && !health.stale
 
   return (
     <footer className="statusbar">
@@ -51,7 +50,7 @@ export function StatusBar({ panelCount }: { panelCount: number }) {
         <span className={`dot${online ? ' live' : ''}`} style={online ? undefined : { background: 'var(--down)' }} />
         {health.loading ? 'Connecting…' : online ? 'API connected' : 'API offline: start the backend on :5080'}
       </span>
-      {health.data && <Providers health={health.data} />}
+      {health.data && online && <Providers health={health.data} />}
       <span>{panelCount}/4 panels</span>
       <span className="right">
         <span><span className="kbd">/</span>command</span>

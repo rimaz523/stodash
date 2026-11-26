@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/backend/">
+    <Project Path="backend/Stodash.Api.Tests/Stodash.Api.Tests.csproj" />
     <Project Path="backend/Stodash.Api/Stodash.Api.csproj" />
   </Folder>
 </Solution>

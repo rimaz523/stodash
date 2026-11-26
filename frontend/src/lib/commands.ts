@@ -20,6 +20,7 @@ export const GLOBAL_COMMANDS = {
   TOP: { label: 'Top News', hint: 'Market headlines from CNBC, MarketWatch, Yahoo, Investing.com and Finnhub' },
   EQS: { label: 'Screener', hint: 'Screen the S&P 500 by sector, market cap, P/E and % change' },
   LAYOUT: { label: 'Layouts', hint: 'Saved workspaces · LAYOUT SAVE Morning · LAYOUT Morning loads it' },
+  THEME: { label: 'Theme', hint: 'Switch between dark and light · THEME LIGHT · THEME DARK' },
   HELP: { label: 'Help', hint: 'Commands and keyboard shortcuts' },
   CLEAR: { label: 'Clear', hint: 'Close all panels' },
 } as const
@@ -40,7 +41,9 @@ export const ECO_INDICATORS: Record<string, string[]> = {
 
 export type ParsedCommand =
   | { kind: 'function'; symbol: string; fn: FunctionCode; range?: Range; period?: Period }
-  | { kind: 'global'; command: Exclude<GlobalCommand, 'W' | 'ECO' | 'LAYOUT'> }
+  | { kind: 'global'; command: Exclude<GlobalCommand, 'W' | 'ECO' | 'LAYOUT' | 'THEME'> }
+  /** THEME switches; THEME LIGHT / THEME DARK picks one. */
+  | { kind: 'theme'; mode?: 'light' | 'dark' }
   /** W, or W <list name> */
   | { kind: 'watchlist'; list?: string }
   /** W ADD NVDA [TO] [list], W DEL NVDA [FROM] [list] */
@@ -168,6 +171,12 @@ function parseGlobal(cmd: GlobalCommand, rest: string[], rawRest: string[]): Par
         return { kind: 'error', message: `Which layout? e.g. ${example}` }
       }
       return { kind: 'layout', action: action ?? 'load', name }
+    }
+    case 'THEME': {
+      if (rest.length === 0) return { kind: 'theme' }
+      if (rest.length === 1 && (rest[0] === 'LIGHT' || rest[0] === 'DARK'))
+        return { kind: 'theme', mode: rest[0] === 'LIGHT' ? 'light' : 'dark' }
+      return { kind: 'error', message: 'Use THEME, THEME LIGHT or THEME DARK.' }
     }
     case 'HELP':
     case 'CLEAR':

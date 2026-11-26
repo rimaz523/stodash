@@ -10,9 +10,10 @@ Run from the repo root. All shell examples are PowerShell (the user is on Window
 ## 1. Static checks (must all be clean)
 
 ```powershell
-dotnet build backend/Stodash.Api
+dotnet build Stodash.slnx
+dotnet test backend/Stodash.Api.Tests
 ```
-Expect `0 Warning(s)` and `0 Error(s)`.
+Expect `0 Warning(s)`, `0 Error(s)` and `Passed!`. If the API is running, the build can't overwrite its exe: stop it first.
 
 ```powershell
 cd frontend; npx tsc -b; npx oxlint src; npx vite build
