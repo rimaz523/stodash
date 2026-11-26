@@ -1,4 +1,5 @@
 import { commandBar, expect, openWith, panel, panels, run, test } from './fixtures.ts'
+import { health } from './mock-api.ts'
 
 test.describe('app shell', () => {
   test('opens the default layout with quotes, market strip and status bar', async ({ page, mock }) => {
@@ -14,32 +15,27 @@ test.describe('app shell', () => {
 
     const status = page.locator('footer.statusbar')
     await expect(status).toContainText('API connected')
-    await expect(status.locator('.provider.up', { hasText: 'Yahoo' })).toBeVisible()
-    await expect(status.locator('.provider.up', { hasText: 'SEC' })).toBeVisible()
-    await expect(status.locator('.provider.off', { hasText: 'Finnhub' })).toBeVisible()
+    // 8 providers, Finnhub not configured: 7 counted, all fine. Hovering lists each one.
+    const summary = status.locator('.provider-summary')
+    await expect(summary).toHaveText(/7\/7 ok/)
+    await expect(summary).toHaveAttribute('title', /Yahoo: working/)
+    await expect(summary).toHaveAttribute('title', /Finnhub: not configured/)
+    await expect(status.locator('.provider.down')).toHaveCount(0)
     await expect(commandBar(page)).toBeFocused()
 
     expect(mock.requests.some((r) => r.startsWith('/api/quotes?symbols='))).toBe(true)
   })
 
   test('shows a failing provider in red with its error on hover', async ({ page, mock }) => {
-    mock.on(/^\/api\/health/, {
-      status: 200,
-      body: {
-        status: 'ok',
-        providers: {
-          yahoo: { configured: true, state: 'up', lastOk: null, lastFailure: null, lastError: null },
-          sec: { configured: true, state: 'down', lastOk: null, lastFailure: '2026-11-26T04:00:00Z', lastError: 'SEC EDGAR timed out.' },
-          finnhub: { configured: true, state: 'unknown', lastOk: null, lastFailure: null, lastError: null },
-        },
-      },
-    })
+    mock.on(/^\/api\/health/, { status: 200, body: health({ sec: 'down', finnhub: 'unknown' }, 'live') })
     await page.goto('/')
 
-    const sec = page.locator('.provider.down', { hasText: 'SEC' })
+    const sec = page.locator('.provider.down', { hasText: 'SEC failing' })
     await expect(sec).toBeVisible()
     await expect(sec).toHaveAttribute('title', /SEC EDGAR timed out/)
-    await expect(page.locator('.provider.unknown', { hasText: 'Finnhub' })).toBeVisible()
+    await expect(page.locator('.provider-summary')).toHaveText(/7\/8 ok/)
+    await expect(page.locator('.provider-summary')).toHaveClass(/down/)
+    await expect(page.locator('.provider.live')).toHaveText(/Live/) // the watchlist stream is up
   })
 
   test('explains that the backend is offline', async ({ page, mock }) => {

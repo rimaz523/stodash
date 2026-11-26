@@ -39,4 +39,28 @@ test.describe('live backend', () => {
     await open(page, 'AAPL CF')
     await expect(panelFor(page, 'CF').locator('tbody tr').first()).toBeVisible({ timeout: 20_000 })
   })
+
+  test('W shows your watchlist (needs LocalDB)', async ({ page }) => {
+    await open(page, 'W')
+    await expect(panelFor(page, 'W').locator('tbody tr').first()).toBeVisible({ timeout: 20_000 })
+  })
+
+  test('YC draws the Treasury curve', async ({ page }) => {
+    await open(page, 'YC')
+    await expect(panelFor(page, 'YC').locator('svg polyline').first()).toBeVisible({ timeout: 20_000 })
+  })
+
+  test('FX and CRYPTO list rates', async ({ page }) => {
+    await open(page, 'FX')
+    await expect(panelFor(page, 'FX').locator('.fx-pairs tbody tr')).toHaveCount(8, { timeout: 20_000 })
+    const input = page.getByRole('combobox', { name: 'Command' })
+    await input.fill('CRYPTO')
+    await input.press('Shift+Enter')
+    await expect(panelFor(page, 'CRYPTO').locator('tbody tr').first()).toBeVisible({ timeout: 20_000 })
+  })
+
+  test('ECO shows indicators, or the FRED setup hint without a key', async ({ page }) => {
+    await open(page, 'ECO')
+    await expect(panelFor(page, 'ECO').locator('.eco-tile, code.setup').first()).toBeVisible({ timeout: 20_000 })
+  })
 })

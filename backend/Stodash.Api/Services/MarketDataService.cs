@@ -1,6 +1,5 @@
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Caching.Memory;
 using Stodash.Api.Infrastructure;
 using Stodash.Api.Models;
 using Stodash.Api.Providers;
@@ -14,7 +13,7 @@ namespace Stodash.Api.Services;
 public sealed partial class MarketDataService(
     YahooClient yahoo,
     FinnhubClient finnhub,
-    IMemoryCache cache,
+    IMarketCache cache,
     ILogger<MarketDataService> log)
 {
     private sealed record RangeSpec(string YahooRange, string Interval, bool Intraday, TimeSpan Ttl);
@@ -85,7 +84,12 @@ public sealed partial class MarketDataService(
             .ToList();
         if (symbols.Count == 0) throw new ArgumentException("Pass at least one symbol, e.g. ?symbols=AAPL,MSFT.");
         if (symbols.Count > 20) throw new ArgumentException("At most 20 symbols per request.");
+        return await GetQuotesAsync(symbols, ct);
+    }
 
+    /// <summary>Quotes for already-validated symbols, in the same order, with no count limit (watchlists, FX).</summary>
+    public async Task<IReadOnlyList<Quote>> GetQuotesAsync(IReadOnlyList<string> symbols, CancellationToken ct)
+    {
         var tasks = symbols.Select(async s =>
         {
             try { return await GetQuoteAsync(s, ct); }
@@ -152,7 +156,8 @@ public sealed partial class MarketDataService(
         if (!Ranges.TryGetValue(range, out var spec))
             throw new ArgumentException($"Unknown range '{rawRange}'. Use one of: {string.Join(", ", Ranges.Keys)}.");
 
-        return Cached($"history:{symbol}:{range}", spec.Ttl, async () =>
+        // Daily and longer bars change slowly, so they're kept across restarts; intraday bars stay in memory.
+        return Cached($"history:{symbol}:{range}", spec.Ttl, durable: !spec.Intraday, load: async () =>
         {
             var chart = await yahoo.GetChartAsync(symbol, spec.YahooRange, spec.Interval, ct);
             var meta = chart["meta"];
@@ -193,7 +198,7 @@ public sealed partial class MarketDataService(
     public Task<CompanyProfile> GetProfileAsync(string rawSymbol, CancellationToken ct)
     {
         var symbol = NormalizeSymbol(rawSymbol);
-        return Cached($"profile:{symbol}", TimeSpan.FromHours(6), async () =>
+        return Cached($"profile:{symbol}", TimeSpan.FromHours(6), durable: true, load: async () =>
         {
             try
             {
@@ -301,5 +306,6 @@ public sealed partial class MarketDataService(
 
     // ---------------------------------------------------------------- cache
 
-    private Task<T> Cached<T>(string key, TimeSpan ttl, Func<Task<T>> load) => cache.GetOrLoadAsync(key, ttl, load);
+    private Task<T> Cached<T>(string key, TimeSpan ttl, Func<Task<T>> load, bool durable = false) =>
+        cache.GetOrLoadAsync(key, ttl, load, durable);
 }

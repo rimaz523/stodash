@@ -1,5 +1,4 @@
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.Caching.Memory;
 using Stodash.Api.Infrastructure;
 using Stodash.Api.Models;
 using Stodash.Api.Providers;
@@ -15,7 +14,7 @@ public sealed class FinancialsService(
     SecClient sec,
     SecCompanyLookup secLookup,
     MarketDataService market,
-    IMemoryCache cache,
+    IMarketCache cache,
     ILogger<FinancialsService> log)
 {
     /// <summary>
@@ -128,7 +127,7 @@ public sealed class FinancialsService(
             _ => throw new ArgumentException($"Unknown period '{rawPeriod}'. Use annual or quarterly."),
         };
 
-        return cache.GetOrLoadAsync($"financials:{symbol}:{period}", TimeSpan.FromHours(12), async () =>
+        return cache.GetOrLoadAsync($"financials:{symbol}:{period}", TimeSpan.FromHours(12), durable: true, load: async () =>
         {
             UpstreamException? failure = null;
             try

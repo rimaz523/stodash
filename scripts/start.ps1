@@ -102,6 +102,20 @@ if ($nodeMajor -lt 20) {
 }
 Write-Ok "Node.js $nodeVersion found"
 
+# SQL Server LocalDB holds watchlists and the data cache. Without it Stodash still runs, but watchlists won't work,
+# so warn rather than stop. Starting the instance here saves the API waiting for it on first use.
+if (Test-Command 'sqllocaldb') {
+    & sqllocaldb start MSSQLLocalDB *> $null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Ok "SQL Server LocalDB running (MSSQLLocalDB)"
+    } else {
+        Write-Host "    Warning: could not start LocalDB instance MSSQLLocalDB. Watchlists will be unavailable." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "    Warning: SQL Server LocalDB not found, so watchlists will be unavailable." -ForegroundColor Yellow
+    Write-Host "    Install it with Visual Studio, or from https://learn.microsoft.com/sql/database-engine/configure-windows/sql-server-express-localdb" -ForegroundColor Yellow
+}
+
 # --- 2. Already running? ----------------------------------------------------------------------
 $apiBusy = Test-PortListening $apiPort
 $webBusy = Test-PortListening $webPort

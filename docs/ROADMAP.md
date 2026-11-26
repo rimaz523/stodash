@@ -16,6 +16,10 @@
 | FA source | Yahoo fundamentals-timeseries first, SEC companyfacts fallback | quoteSummary statement modules are too sparse |
 | News | Yahoo always; Finnhub merged in when a key is set | User wants free services only; Finnhub's free plan qualifies |
 | SEC contact | `Sec:UserAgent` in user-secrets, never committed | SEC requires a contact email; it's set on the user's machine |
+| Database | SQL Server via EF Core: LocalDB now, Azure SQL when hosted | User's choice (phase 3) over SQLite: same engine and migrations locally and on Azure |
+| Watchlists | Several named lists, each owned by a `UserId` (a fixed "local" user until sign-in exists) | Ready for sign-in without a schema change |
+| Hosting (future) | Azure, signed-in users only: the owner plus one or two invited people | Never public. Yahoo/Finnhub terms are personal-use, so revisit data sources before inviting anyone |
+| FRED key | `Fred:ApiKey` in user-secrets (empty placeholder in appsettings) | User will add the key later; ECO shows a "not configured" state until then |
 
 ## Free data sources (researched)
 
@@ -54,15 +58,25 @@ counts, and 8-K item descriptions. Verified in a browser.
   configurable in appsettings (`Sec:UserAgent`) instead of hard-coding the user's email.
 - Add a simple provider-health line to `/api/health`.
 
-### Phase 3: Live and macro (next)
-- `W`: watchlist (persisted on the backend in SQLite, or localStorage first) with live quotes through Finnhub WebSocket,
-  relayed by a backend WebSocket `/ws/quotes` so the key stays server-side.
-- `ECO`: macro dashboard from FRED (CPI YoY, core PCE, unemployment, fed funds, GDP growth, 10Y-2Y).
-- `YC`: US Treasury yield curve (today against 1 month and 1 year ago).
-- `FX`: major pairs grid (Frankfurter + Yahoo `=X`). `CRYPTO`: top coins (CoinGecko).
-- Move the cache to SQLite so it survives restarts.
+### Phase 3: Live and macro ✅ done
+Built as planned below, in one go, and verified in a browser plus 52 mocked and 8 live Playwright tests. Notes:
+- On ARM64 Windows, LocalDB (x64-only) is reached through its named pipe, which `LocalDbPipe` looks up and refreshes.
+- Clicking a row in W, FX or CRYPTO opens it in another panel so the list stays visible.
+- `W <function>` (e.g. `W DES`) is the ticker W (Wayfair), not the watchlist command.
+- ECO is built and tested against fakes. It needs the user's FRED key before it shows real data.
 
-### Phase 4: Power features
+Plan as written:
+- `W`: several named watchlists, stored in SQL Server (LocalDB) with live quotes through Finnhub WebSocket,
+  relayed by a backend WebSocket `/ws/quotes` so the key stays server-side. Falls back to polling.
+  First run creates a "Main" list with the Magnificent 7: AAPL, MSFT, GOOGL, AMZN, NVDA, META, TSLA.
+- `ECO`: macro dashboard from FRED, 9 tiles: CPI YoY, core PCE YoY, unemployment, fed funds, real GDP growth, 10Y-2Y,
+  30-year mortgage rate, initial jobless claims, consumer sentiment (U. of Michigan).
+- `YC`: US Treasury yield curve (today against 1 month and 1 year ago). Source: Treasury's daily CSV, no key.
+- `FX`: 8 pairs against USD (EUR, GBP, JPY, CHF, CAD, AUD, NZD, CNY) plus a cross-rate matrix (Yahoo `=X`,
+  Frankfurter fallback). `CRYPTO`: top coins (CoinGecko, no key needed).
+- Persist the cache in SQL Server so it survives restarts, behind an interface so hosting can swap it for Redis.
+
+### Phase 4: Power features (next)
 - `TOP`: top market headlines (RSS + Finnhub general news).
 - `EQS`: screener over a preset universe (S&P 500 list, refreshed daily) with filters (P/E, market cap, sector, % change).
 - Saved layouts (named workspaces), more keyboard shortcuts, resizable panels.
@@ -71,5 +85,10 @@ counts, and 8-K item descriptions. Verified in a browser.
 Error and empty states, loading skeletons everywhere, theme tweaks, accessibility pass, README and screenshots,
 and optionally backend unit tests (xUnit) for the mappers and the command parser.
 
+### Later: Azure hosting and sign-in (not scheduled)
+Host on Azure (App Service + Azure SQL) for the owner and one or two invited people, with Microsoft Entra ID sign-in.
+Watchlists already carry a `UserId`. Before inviting anyone, replace or restrict the personal-use sources
+(Yahoo, Finnhub free tier) for those users.
+
 ## Out of scope
-Trading or order execution, paid real-time data, user accounts, public hosting, and deep bond or options analytics.
+Trading or order execution, paid real-time data, public hosting or open sign-up, and deep bond or options analytics.

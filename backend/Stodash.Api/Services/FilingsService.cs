@@ -1,5 +1,4 @@
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.Caching.Memory;
 using Stodash.Api.Infrastructure;
 using Stodash.Api.Models;
 using Stodash.Api.Providers;
@@ -7,14 +6,14 @@ using Stodash.Api.Providers;
 namespace Stodash.Api.Services;
 
 /// <summary>SEC filings (CF) from EDGAR's submissions API.</summary>
-public sealed class FilingsService(SecClient sec, SecCompanyLookup lookup, MarketDataService market, IMemoryCache cache)
+public sealed class FilingsService(SecClient sec, SecCompanyLookup lookup, MarketDataService market, IMarketCache cache)
 {
     private const string Source = "SEC EDGAR";
 
     public Task<FilingList> GetFilingsAsync(string rawSymbol, CancellationToken ct)
     {
         var symbol = MarketDataService.NormalizeSymbol(rawSymbol);
-        return cache.GetOrLoadAsync($"filings:{symbol}", TimeSpan.FromHours(1), async () =>
+        return cache.GetOrLoadAsync($"filings:{symbol}", TimeSpan.FromHours(1), durable: true, load: async () =>
         {
             if (!sec.IsConfigured)
                 throw new UpstreamException("SEC EDGAR is not configured. Set Sec:UserAgent to \"Stodash your@email\" (see README).");

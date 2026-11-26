@@ -198,7 +198,134 @@ export interface ProviderStatus {
   lastError: string | null
 }
 
+export const PROVIDERS = ['yahoo', 'sec', 'finnhub', 'fred', 'treasury', 'coingecko', 'frankfurter', 'database'] as const
+export type ProviderName = (typeof PROVIDERS)[number]
+
+/** off (no Finnhub key), idle (no one watching), connecting, live or error. */
+export type StreamState = 'off' | 'idle' | 'connecting' | 'live' | 'error'
+
 export interface Health {
   status: string
-  providers: { yahoo: ProviderStatus; finnhub: ProviderStatus; sec: ProviderStatus }
+  providers: Record<ProviderName, ProviderStatus>
+  stream: { state: StreamState; error: string | null }
+}
+
+// Mirrors backend/Stodash.Api/Models/WatchlistModels.cs
+
+export interface Watchlist {
+  id: number
+  name: string
+  /** In the user's chosen order. */
+  symbols: string[]
+}
+
+// Mirrors backend/Stodash.Api/Models/MacroModels.cs
+
+export interface EcoPoint {
+  /** yyyy-MM-dd */
+  date: string
+  value: number
+}
+
+/** percent (4.2 = 4.2%), points (percentage points), count (e.g. jobless claims) or index. */
+export type EcoUnit = 'percent' | 'points' | 'count' | 'index'
+
+export interface EcoIndicator {
+  id: string
+  label: string
+  seriesId: string
+  unit: EcoUnit
+  frequency: string
+  description: string
+  latest: number | null
+  previous: number | null
+  /** latest − previous, in the indicator's unit */
+  change: number | null
+  latestDate: string | null
+  sparkline: EcoPoint[]
+}
+
+export interface EcoDashboard {
+  configured: boolean
+  note: string | null
+  indicators: EcoIndicator[]
+  source: string
+}
+
+export const ECO_RANGES = ['1Y', '5Y', '10Y', '20Y'] as const
+export type EcoRange = (typeof ECO_RANGES)[number]
+
+export interface EcoSeries {
+  id: string
+  label: string
+  seriesId: string
+  unit: EcoUnit
+  frequency: string
+  description: string
+  range: EcoRange
+  points: EcoPoint[]
+  source: string
+}
+
+export interface YieldMaturity {
+  label: string
+  months: number
+}
+
+export interface YieldCurveLine {
+  label: string
+  date: string
+  /** Percents, lined up with YieldCurve.maturities. */
+  yields: (number | null)[]
+}
+
+export interface YieldCurve {
+  maturities: YieldMaturity[]
+  /** Latest, about 1 month ago, about 1 year ago. */
+  curves: YieldCurveLine[]
+  /** Basis points; negative means inverted. */
+  spreads: { label: string; bp: number | null }[]
+  source: string
+}
+
+export interface FxPair {
+  pair: string
+  base: string
+  quote: string
+  symbol: string
+  rate: number | null
+  change: number | null
+  /** Already a percent: 0.25 means +0.25% */
+  changePercent: number | null
+  /** Yahoo, ECB (daily reference rate) or none */
+  source: string
+  time: string | null
+}
+
+export interface FxBoard {
+  pairs: FxPair[]
+  currencies: string[]
+  /** matrix[i][j] = units of currencies[j] per one unit of currencies[i] */
+  matrix: (number | null)[][]
+}
+
+export interface CryptoCoin {
+  rank: number
+  id: string
+  symbol: string
+  name: string
+  price: number | null
+  /** Percents: 3.2 means +3.2% */
+  change24h: number | null
+  change7d: number | null
+  marketCap: number | null
+  volume24h: number | null
+  sparkline: number[]
+  yahooSymbol: string
+}
+
+export interface CryptoBoard {
+  coins: CryptoCoin[]
+  source: string
+  asOf: string
 }

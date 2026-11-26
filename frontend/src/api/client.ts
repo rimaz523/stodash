@@ -1,5 +1,10 @@
 import type {
   CompanyProfile,
+  CryptoBoard,
+  EcoDashboard,
+  EcoRange,
+  EcoSeries,
+  FxBoard,
   FilingList,
   FinancialStatements,
   Health,
@@ -9,6 +14,8 @@ import type {
   Quote,
   Range,
   SearchResult,
+  Watchlist,
+  YieldCurve,
 } from './types'
 
 export class ApiError extends Error {
@@ -23,14 +30,24 @@ export class ApiError extends Error {
 }
 
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return request<T>('GET', path, undefined, signal)
+}
+
+async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   let res: Response
   try {
-    res = await fetch(path, { signal, headers: { Accept: 'application/json' } })
+    res = await fetch(path, {
+      method,
+      signal,
+      headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
   } catch (err) {
     if ((err as Error).name === 'AbortError') throw err
     throw new ApiError(0, 'Backend offline', 'Cannot reach the Stodash API. Is the backend running on :5080?')
   }
 
+  if (res.status === 204) return undefined as T
   if (res.ok) return (await res.json()) as T
 
   // The API returns RFC 7807 problem details; the Vite proxy returns plain text when the API is down.
@@ -62,4 +79,21 @@ export const api = {
   news: (symbol: string, signal?: AbortSignal) => get<NewsFeed>(`/api/news/${enc(symbol)}`, signal),
   filings: (symbol: string, signal?: AbortSignal) => get<FilingList>(`/api/filings/${enc(symbol)}`, signal),
   health: (signal?: AbortSignal) => get<Health>('/api/health', signal),
+
+  watchlists: (signal?: AbortSignal) => get<Watchlist[]>('/api/watchlists', signal),
+  watchlistQuotes: (id: number, signal?: AbortSignal) => get<Quote[]>(`/api/watchlists/${id}/quotes`, signal),
+  createWatchlist: (name: string) => request<Watchlist>('POST', '/api/watchlists', { name }),
+  renameWatchlist: (id: number, name: string) => request<Watchlist>('PATCH', `/api/watchlists/${id}`, { name }),
+  deleteWatchlist: (id: number) => request<void>('DELETE', `/api/watchlists/${id}`),
+  addToWatchlist: (id: number, symbol: string) => request<Watchlist>('POST', `/api/watchlists/${id}/items`, { symbol }),
+  removeFromWatchlist: (id: number, symbol: string) =>
+    request<Watchlist>('DELETE', `/api/watchlists/${id}/items/${enc(symbol)}`),
+  reorderWatchlist: (id: number, symbols: string[]) => request<Watchlist>('PUT', `/api/watchlists/${id}/order`, { symbols }),
+
+  eco: (signal?: AbortSignal) => get<EcoDashboard>('/api/eco', signal),
+  ecoSeries: (id: string, range: EcoRange, signal?: AbortSignal) =>
+    get<EcoSeries>(`/api/eco/${enc(id)}?range=${range}`, signal),
+  yieldCurve: (signal?: AbortSignal) => get<YieldCurve>('/api/yieldcurve', signal),
+  fx: (signal?: AbortSignal) => get<FxBoard>('/api/fx', signal),
+  crypto: (signal?: AbortSignal) => get<CryptoBoard>('/api/crypto', signal),
 }

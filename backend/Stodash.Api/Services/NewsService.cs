@@ -1,5 +1,4 @@
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.Caching.Memory;
 using Stodash.Api.Infrastructure;
 using Stodash.Api.Models;
 using Stodash.Api.Providers;
@@ -14,7 +13,7 @@ public sealed class NewsService(
     YahooClient yahoo,
     FinnhubClient finnhub,
     MarketDataService market,
-    IMemoryCache cache,
+    IMarketCache cache,
     ILogger<NewsService> log)
 {
     private const int MaxItems = 50;

@@ -10,6 +10,16 @@ const COMMANDS: [string, string][] = [
   ['AAPL FA Q', 'Financials opened on quarterly periods (A for annual)'],
   ['AAPL N', 'Latest company headlines; links open in a new tab'],
   ['AAPL CF', 'SEC filings (10-K, 10-Q, 8-K, proxy, insider) with links to EDGAR'],
+  ['W', 'Watchlists with live prices; tabs switch lists, ＋ creates one'],
+  ['W Tech', 'Open the watchlist called Tech'],
+  ['W ADD NVDA', 'Add NVDA to the open list (W ADD NVDA TO Tech for another list)'],
+  ['W DEL NVDA', 'Remove NVDA (also REMOVE or RM)'],
+  ['W DES', 'A function after W means the ticker W (Wayfair), not watchlists'],
+  ['ECO', 'US economy: CPI, core PCE, jobs, rates, GDP, mortgages, sentiment (needs a FRED key)'],
+  ['ECO CPI', 'Open one indicator: CPI PCE UNEMP FEDFUNDS GDP SPREAD MORTGAGE CLAIMS SENTIMENT'],
+  ['YC', 'US Treasury yield curve: now, a month ago, a year ago'],
+  ['FX', 'Major currency pairs against USD and a cross-rate matrix'],
+  ['CRYPTO', 'Top 25 coins by market cap, sortable'],
   ['MSFT US EQUITY GP', 'Bloomberg-style words like US and EQUITY are ignored'],
   ['HELP', 'This panel'],
   ['CLEAR', 'Close every panel'],
@@ -78,7 +88,8 @@ export function HelpPanel({ onRun, ...frame }: PanelProps & { onRun: (cmd: strin
         </table>
 
         <p>
-          Data from Yahoo Finance (usually delayed about 15 minutes) and SEC EDGAR, plus Finnhub when a key is set.
+          Data from Yahoo Finance (usually delayed about 15 minutes), SEC EDGAR, FRED, the US Treasury, CoinGecko and
+          the ECB, plus Finnhub (live watchlist prices and news) when a key is set.
           For personal research only.
         </p>
       </div>

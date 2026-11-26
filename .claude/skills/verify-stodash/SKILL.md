@@ -52,9 +52,16 @@ curl.exe -s "localhost:5080/api/search?q=nvid"
 curl.exe -s "localhost:5080/api/quotes?symbols=^GSPC,EURUSD=X,BTC-USD"
 curl.exe -s -o NUL -w "%{http_code}" localhost:5080/api/quote/ZZZZZZ    # expect 404
 curl.exe -s -o NUL -w "%{http_code}" "localhost:5080/api/history/AAPL?range=7X"  # expect 400
+curl.exe -s localhost:5080/api/watchlists          # needs LocalDB; first call creates "Main" (Magnificent 7)
+curl.exe -s localhost:5080/api/yieldcurve
+curl.exe -s localhost:5080/api/fx
+curl.exe -s localhost:5080/api/crypto
+curl.exe -s localhost:5080/api/eco                 # configured=false with a note when there's no FRED key
 ```
 Check for any new endpoint as well. A 502 means the provider failed. Yahoo may be rate-limiting, or its crumb flow
-may have changed (see CLAUDE.md).
+may have changed (see CLAUDE.md). A 503 on watchlists means the database is unreachable: run
+`sqllocaldb start MSSQLLocalDB`, and on ARM64 check the "Using LocalDB instance ... through np:" line in the API log.
+Don't leave test data in the user's watchlists: undo any adds, renames or reorders you make while checking.
 
 ## 4. In the browser (http://localhost:5173)
 
@@ -63,6 +70,10 @@ may have changed (see CLAUDE.md).
 - `AAPL XYZ` shows an inline "Unknown function" error. `ZZZZQQ` shows "Couldn't load" inside the panel.
 - `^GSPC GP 1D` shows an intraday line or candles with a dashed prev-close line, and the axis is in New York time.
 - Hovering the chart updates the legend, and Line, SMA and Volume toggles work. `HELP` opens the help panel.
+- `W` shows the watchlist with "Live" (US market hours, Finnhub key) or "Polling". `W ADD AMD` then `W DEL AMD` both
+  report success. `W DES` opens Wayfair, not watchlists.
+- `YC`, `FX` and `CRYPTO` fill in. `ECO` shows tiles, or the FRED setup hint without a key. Clicking a row in W, FX or
+  CRYPTO opens it in another panel.
 - The browser console has no errors other than expected 404s from deliberate bad-ticker tests.
 - Exercise whatever you just changed.
 

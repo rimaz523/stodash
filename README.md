@@ -1,12 +1,15 @@
 # Stodash
 
 A personal, keyboard-driven market terminal inspired by the Bloomberg Terminal, built on free data.
-**Phases 1–2:** command bar, company description (`DES`), price charts (`GP`), financial statements (`FA`),
-company news (`N`) and SEC filings (`CF`).
+**Phases 1–3:** command bar, company description (`DES`), price charts (`GP`), financial statements (`FA`),
+company news (`N`), SEC filings (`CF`), watchlists with live prices (`W`), the US economy (`ECO`), the Treasury yield
+curve (`YC`), currencies (`FX`) and crypto (`CRYPTO`).
 
 - **Backend:** ASP.NET Core minimal API on .NET 10 (`backend/Stodash.Api`)
 - **Frontend:** React 19 + TypeScript + Vite, charts by TradingView Lightweight Charts (`frontend`)
-- **Data:** Yahoo Finance public endpoints (no key needed) and SEC EDGAR (free, needs a contact email), with optional Finnhub
+- **Database:** SQL Server LocalDB via EF Core (watchlists, and a cache that survives restarts)
+- **Data:** Yahoo Finance (no key), SEC EDGAR (free, needs a contact email), FRED (free key), US Treasury, CoinGecko
+  and the ECB (no key), with optional Finnhub for live watchlist prices
 
 > For personal research only. Free data is usually delayed ~15 minutes, and provider terms
 > generally forbid redistributing it, so don't deploy this publicly.
@@ -51,6 +54,9 @@ The rest of this section is the manual way, which is useful for understanding wh
 
 - **.NET 10 SDK:** https://dotnet.microsoft.com/download/dotnet/10.0
 - **Node.js 20 or newer** (includes npm): https://nodejs.org
+- **SQL Server LocalDB:** comes with Visual Studio (the "Data storage and processing" workload), or install
+  [SQL Server Express LocalDB](https://learn.microsoft.com/sql/database-engine/configure-windows/sql-server-express-localdb).
+  Without it Stodash still runs, but watchlists don't work and the cache resets on every restart.
 
 Check that they're installed:
 
@@ -62,7 +68,12 @@ dotnet --list-sdks
 node --version
 ```
 
-The first should list a `10.x` version, and the second should print `v20` or higher.
+```powershell
+sqllocaldb info
+```
+
+The first should list a `10.x` version, the second should print `v20` or higher, and the third should list
+`MSSQLLocalDB`. The API creates its `Stodash` database on first start. You don't need to set anything up.
 
 ### 2. First-time setup (once)
 
@@ -135,6 +146,8 @@ It serves on http://localhost:4173 and still talks to the API on :5080.
 | Status bar says **API offline** | Terminal 1 isn't running, or it crashed. Start it again and check its output for errors. |
 | `address already in use` on 5080 or 5173 | An old copy is still running. Close the other terminal, or find it with `Get-NetTCPConnection -LocalPort 5080` and stop that process. |
 | Panels say **Data provider unavailable** (502) | Yahoo is rate-limiting or briefly down. Wait a minute and retry, or add a Finnhub key (below). |
+| Watchlists say **Database unavailable** (503) | LocalDB isn't running or isn't installed. Run `sqllocaldb start MSSQLLocalDB`, or install it (step 1). |
+| Watchlists show **Polling** instead of **Live** | No Finnhub key, the market is closed, or the symbols aren't US stocks. Hover over the badge for details. |
 | `dotnet` or `npm` is not recognized | The prerequisite isn't installed, or the terminal was opened before installing. Open a new terminal. |
 | The page looks stale after updating code | Refresh the browser. If it's still stale, stop both terminals and start them again. |
 
@@ -150,10 +163,25 @@ dotnet user-secrets set "Sec:UserAgent" "Stodash you@example.com" --project back
 
 Without it, `CF` shows "SEC EDGAR is not configured" and the status bar shows SEC as off. Everything else still works.
 
+### FRED key (for `ECO`)
+
+`ECO` uses the St. Louis Fed's free FRED data, which needs a free key: https://fred.stlouisfed.org/docs/api/api_key.html.
+Then:
+
+```powershell
+dotnet user-secrets set "Fred:ApiKey" "YOUR_KEY" --project backend/Stodash.Api
+```
+
+Restart the API afterwards. Until then, `ECO` shows how to set the key, and everything else works.
+
 ### Optional: Finnhub
 
-Finnhub has a free plan (sign up with an email, no card). With a key, quotes and profiles fall back to Finnhub when
-Yahoo fails, and `N` merges Finnhub's company news with Yahoo's. Get a free key at https://finnhub.io/register, then:
+Finnhub has a free plan (sign up with an email, no card). With a key:
+- watchlist prices for US stocks stream live (otherwise they refresh every 15 seconds),
+- quotes and profiles fall back to Finnhub when Yahoo fails,
+- and `N` merges Finnhub's company news with Yahoo's.
+
+Get a free key at https://finnhub.io/register, then:
 
 ```powershell
 dotnet user-secrets init --project backend/Stodash.Api
@@ -163,8 +191,13 @@ dotnet user-secrets init --project backend/Stodash.Api
 dotnet user-secrets set "Finnhub:ApiKey" "YOUR_KEY" --project backend/Stodash.Api
 ```
 
-The key stays on the backend and never reaches the browser. The status bar lists each provider with a dot: green when
-its last call worked, red when it failed (hover for the error), hollow when it isn't configured.
+The key stays on the backend and never reaches the browser.
+
+`CRYPTO` works without a key. A free CoinGecko "demo" key raises its rate limits:
+`dotnet user-secrets set "CoinGecko:ApiKey" "YOUR_KEY" --project backend/Stodash.Api`.
+
+The status bar shows "Data: ● 7/7 ok". Hover over it to see every provider's state. A failing provider is also named
+in red, and "● Live" appears while watchlist prices are streaming.
 
 ## Running the tests
 
@@ -173,13 +206,18 @@ browser and click and type through it the way you would. There are two suites:
 
 | Suite | Command (from `frontend`) | Needs the backend? | What it checks |
 |---|---|---|---|
-| **Main** (30 tests, ~10 s) | `npm run test:e2e` | No | Every usual scenario, using a fake API with fixed data |
-| **Live smoke** (4 tests) | `npm run test:e2e:live` | Yes, on :5080 | DES, GP, FA, N and CF load with real Yahoo and SEC data |
+| **Main** (52 tests, ~15 s) | `npm run test:e2e` | No | Every usual scenario, using a fake API with fixed data |
+| **Live smoke** (8 tests) | `npm run test:e2e:live` | Yes, on :5080 | Every function loads with real data (W needs LocalDB) |
 
-The main suite covers the default layout, the market strip and status bar, the command bar (Enter, Shift+Enter, the
-4-panel limit, suggestions, company names, error messages, history, HELP and CLEAR), the FA, N and CF panels, settings
-that survive a reload, and what happens when the backend is offline or a provider fails. Its fake API lives in
-`frontend/e2e/mock-api.ts`, so results never depend on Yahoo, SEC or market hours.
+The main suite covers:
+- the default layout, the market strip and the status bar;
+- the command bar: Enter, Shift+Enter, the 4-panel limit, suggestions, company names, error messages, history,
+  HELP, CLEAR, and `W DES` meaning the ticker W;
+- every panel: FA, N and CF; watchlists (create, rename, delete, add, remove, `W ADD`, live prices through a
+  simulated stream, the polling fallback); and ECO, YC, FX and CRYPTO;
+- settings that survive a reload, and what happens when the backend, the database or a provider fails.
+
+Its fake API lives in `frontend/e2e/mock-api.ts`, so results never depend on Yahoo, SEC or market hours.
 
 ### 1. One-time setup
 
@@ -199,7 +237,7 @@ cd frontend; npm run test:e2e
 ```
 
 You don't need to start anything first. The tests start their own copy of the web app on http://localhost:5199 and
-stop it afterwards, so they won't clash with an app you have open on :5173. A passing run ends with `30 passed`.
+stop it afterwards, so they won't clash with an app you have open on :5173. A passing run ends with `52 passed`.
 
 ### 3. Run the live smoke tests (optional)
 
@@ -262,6 +300,13 @@ Type into the command bar (or just start typing anywhere):
 | `AAPL N` | Latest company headlines, newest first; links open in a new tab |
 | `AAPL CF` | SEC filings with filters (Annual, Quarterly, 8-K, Proxy, Insider, Other) and links to EDGAR |
 | `tesla` | A company name works too: Enter opens the best match |
+| `W` | Watchlists: tabs per list, ＋ to create, Rename, Delete; live prices for US stocks; drag rows to reorder |
+| `W Tech` | Open the watchlist called Tech |
+| `W ADD NVDA` / `W DEL NVDA` | Add or remove a symbol (add `TO Tech` / `FROM Tech` for another list) |
+| `ECO` / `ECO CPI` | US economy: 9 indicators from FRED; click a tile (or name it) for its history |
+| `YC` | US Treasury yield curve: now, a month ago and a year ago, with spreads and inversion |
+| `FX` | 8 major pairs against USD and a cross-rate matrix |
+| `CRYPTO` | Top 25 coins by market cap, sortable, with 7-day sparklines |
 | `HELP` | Commands, ticker formats and shortcuts |
 | `CLEAR` | Close all panels |
 
@@ -275,8 +320,10 @@ Ticker formats: indexes `^GSPC`, FX `EURUSD=X`, crypto `BTC-USD`, futures `GC=F`
 | `↑` `↓` / `Tab` | Pick / complete a suggestion; `↑` with the list closed walks history |
 | `Alt 1–4` | Switch active panel |
 
-Click a market in the top strip to chart it (Shift-click for a new panel). The layout, chart settings and
-command history are saved in your browser's local storage.
+Click a market in the top strip to chart it (Shift-click for a new panel). In `W`, `FX` and `CRYPTO`, clicking a row
+opens it in another panel so the list stays put (Shift-click: a new panel). `W` followed by a function, like
+`W DES`, means the ticker W (Wayfair). The layout, chart settings and command history are saved in your browser's
+local storage. Watchlists are saved in the database.
 
 ## API
 
@@ -290,32 +337,47 @@ command history are saved in your browser's local storage.
 | `GET /api/financials/{symbol}?period=annual` | Statements and ratios; period `annual` or `quarterly` |
 | `GET /api/news/{symbol}` | Up to 50 recent headlines |
 | `GET /api/filings/{symbol}` | Recent SEC filings (needs `Sec:UserAgent`) |
-| `GET /api/health` | API status, plus each provider's configuration and last success or failure |
+| `GET /api/watchlists` | Your watchlists (a first visit creates "Main" with the Magnificent 7) |
+| `POST /api/watchlists` · `PATCH` · `DELETE /api/watchlists/{id}` | Create `{name}`, rename `{name}`, delete |
+| `POST /api/watchlists/{id}/items` · `DELETE …/items/{symbol}` | Add `{symbol}`, remove |
+| `PUT /api/watchlists/{id}/order` · `GET …/{id}/quotes` | Reorder `{symbols}`; quotes for the list |
+| `GET /api/eco` · `/api/eco/{id}?range=5Y` | ECO tiles; one indicator's history (`1Y 5Y 10Y 20Y`) |
+| `GET /api/yieldcurve` | Treasury curve now, about 1 month and 1 year ago |
+| `GET /api/fx` · `GET /api/crypto` | FX pairs and cross rates; top 25 coins |
+| `WS /ws/quotes` | Live trades: send `{"subscribe": ["AAPL"]}`, receive status and trade messages |
+| `GET /api/health` | API status, each provider's configuration and last success or failure, and the stream state |
 
-Errors come back as RFC 7807 problem details: `400` bad input, `404` unknown symbol, `502` provider failure.
+Errors come back as RFC 7807 problem details: `400` bad input, `404` unknown symbol or list, `409` duplicate,
+`502` provider failure, `503` database unavailable.
 When a function doesn't apply to an instrument (FA for an index, CF for a non-US listing), the API returns `200` with an
 empty list and a `note` explaining why.
 The OpenAPI document is at `/openapi/v1.json` in development.
 
-Responses are cached in memory (quotes 15 s, intraday charts 1–5 min, daily charts 15–30 min, news 5 min,
-filings 1 h, profiles 6 h, financials 12 h, search 1 h, SEC ticker list 24 h) to stay within free-tier limits.
-Failures are never cached.
+Responses are cached to stay within free-tier limits: quotes 15 s, FX 60 s, crypto 2 min, intraday charts 1–5 min,
+news 5 min, daily charts 15–30 min, filings and the yield curve 1 h, profiles and ECO 6 h, financials 12 h, and the SEC
+ticker list 24 h. Slow-changing data (profiles, financials, filings, daily charts, ECO, YC, SEC tickers) is also stored
+in the database, so it survives API restarts. Failures are never cached.
 
 ## Layout
 
 ```
 backend/Stodash.Api/
   Program.cs                 DI, error handling, CORS, OpenAPI
-  Endpoints/                 Route definitions
+  Endpoints/                 Route definitions: market, watchlists, macro (+ /ws/quotes)
+  Data/                      EF Core: StodashDb (watchlists, cache) and Migrations/
   Services/                  MarketDataService (quotes, charts, profiles, search), FinancialsService,
-                             NewsService, FilingsService, SecCompanyLookup (ticker → CIK)
-  Providers/                 YahooClient (cookie + crumb handling), FinnhubClient, SecClient
+                             NewsService, FilingsService, SecCompanyLookup (ticker → CIK), WatchlistService,
+                             QuoteStream (Finnhub WebSocket relay), EcoService, YieldCurveService, FxService, CryptoService
+  Providers/                 YahooClient (cookie + crumb handling), FinnhubClient, SecClient, FredClient,
+                             TreasuryClient, CoinGeckoClient, FrankfurterClient
   Models/                    Response records
-  Infrastructure/            Errors and lenient JSON readers
+  Infrastructure/            Errors, lenient JSON readers, provider health, the two-level cache, current user,
+                             and the LocalDB-on-ARM64 workaround
 frontend/src/
   App.tsx                    Workspace: panels, command routing, shortcuts
-  components/                Command bar, market strip, chart, quote header, chrome
-  panels/                    DES, GP, FA, N, CF and HELP panels
+  components/                Command bar, market strip, charts, sparkline, quote header, chrome
+  hooks/                     useApi, useLocalStorage, useQuoteStream (live prices)
+  panels/                    DES, GP, FA, N, CF, W, ECO, YC, FX, CRYPTO and HELP panels
   lib/                       Command parser, formatting, time zones, theme
   api/                       Typed API client
 ```
@@ -328,12 +390,17 @@ frontend/src/
 - `CF` only covers companies registered with the US SEC under a US ticker: `RY.TO` has no filings, though `RY` does.
 - Yahoo's news for a ticker includes market-wide stories that mention it, not only company-specific ones.
 - Prices are delayed for most exchanges; the "as of" time on each quote shows how fresh it is.
-- The cache is in memory, so it resets when the API restarts (SQLite is planned for a later phase).
+- Live watchlist prices need a Finnhub key and only cover US stock tickers (up to 50 at a time on the free plan).
+  Indexes, FX, futures, crypto and non-US listings refresh every 15 seconds instead. Outside market hours nothing
+  streams, so prices stay at the last trade.
+- `ECO` needs a FRED key. FRED's data comes out monthly, weekly or quarterly, so "latest" can be a few weeks old.
+- On Windows on ARM (e.g. a Surface), LocalDB is x64-only, so the API connects to it through its named pipe, which it
+  looks up automatically. If watchlists say the database is unavailable, run `sqllocaldb start MSSQLLocalDB`.
 
 ## Roadmap
 
 1. ~~Foundation: command bar, DES, GP~~ ✅
 2. ~~Core research: financial statements (`FA`), news (`N`), SEC filings (`CF`)~~ ✅
-3. Live and macro: streaming watchlist (`W`), economics (`ECO`), yield curve (`YC`), `FX`, `CRYPTO`
+3. ~~Live and macro: streaming watchlists (`W`), economics (`ECO`), yield curve (`YC`), `FX`, `CRYPTO`, persistent cache~~ ✅
 4. Power features: top news (`TOP`), screener (`EQS`), saved layouts
 5. Polish

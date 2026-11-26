@@ -22,6 +22,11 @@ public sealed class ProviderHealth
     public const string Yahoo = "yahoo";
     public const string Finnhub = "finnhub";
     public const string Sec = "sec";
+    public const string Fred = "fred";
+    public const string Treasury = "treasury";
+    public const string CoinGecko = "coingecko";
+    public const string Frankfurter = "frankfurter";
+    public const string Database = "database";
 
     private sealed record Entry(DateTimeOffset? LastOk, DateTimeOffset? LastFailure, string? LastError);
 

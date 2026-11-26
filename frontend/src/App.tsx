@@ -1,19 +1,28 @@
-import { useCallback, useEffect } from 'react'
-import { FILING_CATEGORIES, PERIODS, RANGES } from './api/types'
+import { useCallback, useEffect, useState } from 'react'
+import { api } from './api/client'
+import { ECO_RANGES, FILING_CATEGORIES, PERIODS, RANGES } from './api/types'
 import { Brand, Clocks, StatusBar } from './components/Chrome'
 import { CommandBar } from './components/CommandBar'
 import { MarketStrip } from './components/MarketStrip'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { isFunction, parseCommand, type FunctionCode } from './lib/commands'
 import { ChartPanel } from './panels/ChartPanel'
+import { CryptoPanel } from './panels/CryptoPanel'
 import { DescriptionPanel } from './panels/DescriptionPanel'
+import { EcoPanel } from './panels/EcoPanel'
 import { FilingsPanel } from './panels/FilingsPanel'
 import { FinancialsPanel } from './panels/FinancialsPanel'
+import { FxPanel } from './panels/FxPanel'
 import { HelpPanel } from './panels/HelpPanel'
 import { NewsPanel } from './panels/NewsPanel'
-import { STATEMENTS, type PanelSpec, type PanelState } from './panels/types'
+import { WatchlistPanel, type WatchNotice } from './panels/WatchlistPanel'
+import { YieldCurvePanel } from './panels/YieldCurvePanel'
+import { GLOBAL_KINDS, STATEMENTS, isSymbolSpec, type PanelSpec, type PanelState } from './panels/types'
 
 const MAX_PANELS = 4
+
+/** Panels that make sense once: running their command again focuses the existing one. W can be open several times. */
+const SINGLE_INSTANCE = new Set<string>(['HELP', 'ECO', 'YC', 'FX', 'CRYPTO'])
 
 interface Workspace {
   panels: PanelState[]
@@ -42,7 +51,8 @@ function isWorkspace(v: unknown): v is Workspace {
     w.panels.every(
       (p) =>
         typeof p?.id === 'string' &&
-        (p.kind === 'HELP' || (isFunction(p.kind) && typeof p.symbol === 'string')),
+        ((GLOBAL_KINDS as readonly string[]).includes(p.kind) ||
+          (isFunction(p.kind) && typeof (p as { symbol?: unknown }).symbol === 'string')),
     )
   )
 }
@@ -51,11 +61,15 @@ export default function App() {
   const [ws, setWs] = useLocalStorage<Workspace>('stodash.workspace.v1', DEFAULT_WORKSPACE, isWorkspace)
   const { panels } = ws
   const activeId = panels.some((p) => p.id === ws.activeId) ? ws.activeId : (panels[0]?.id ?? null)
+  const active = panels.find((p) => p.id === activeId)
+  // The outcome of the last "W ADD …" / "W DEL …", shown by the watchlist panel that it applied to.
+  const [watchNotice, setWatchNotice] = useState<WatchNotice & { panelId?: string }>()
 
-  /** Put `panel` in the active slot, or in a new slot when asked (or when there is none). */
+  /** Put `panel` in the active slot (or the slot `into`), or in a new slot when asked or when there is none. */
   const place = useCallback(
-    (panel: PanelSpec, newPanel: boolean): string | null => {
-      const wantsNew = newPanel || activeId === null
+    (panel: PanelSpec, newPanel: boolean, into?: string): string | null => {
+      const targetId = into ?? activeId
+      const wantsNew = newPanel || targetId === null
       if (wantsNew && panels.length >= MAX_PANELS)
         return `You can have up to ${MAX_PANELS} panels. Close one, or press Enter to load into the active panel.`
 
@@ -65,8 +79,8 @@ export default function App() {
           return { panels: [...panels, { ...panel, id }], activeId: id }
         }
         return {
-          panels: panels.map((p) => (p.id === activeId ? { ...panel, id: p.id } : p)),
-          activeId,
+          panels: panels.map((p) => (p.id === targetId ? { ...panel, id: p.id } : p)),
+          activeId: targetId,
         }
       })
       return null
@@ -74,43 +88,89 @@ export default function App() {
     [panels, activeId, setWs],
   )
 
-  const runCommand = useCallback(
-    (input: string, newPanel: boolean): string | null => {
-      const cmd = parseCommand(input)
-      if (!cmd) return null
-      if (cmd.kind === 'error') return cmd.message
-      if (cmd.kind === 'global') {
-        if (cmd.command === 'CLEAR') {
-          setWs({ panels: [], activeId: null })
-          return null
-        }
-        // HELP: focus an existing help panel instead of opening a second one.
-        const existing = panels.find((p) => p.kind === 'HELP')
-        if (existing) {
-          setWs((w) => ({ ...w, activeId: existing.id }))
-          return null
-        }
-        return place({ kind: 'HELP' }, newPanel)
-      }
-      // Carry the active panel's view settings (chart range, FA statement, CF filter) over to the new view.
-      const current = panels.find((p) => p.id === activeId)
-      const keep = current && current.kind !== 'HELP' ? current : undefined
-      return place(
-        {
-          kind: cmd.fn,
-          symbol: cmd.symbol,
-          range: cmd.range ?? keep?.range,
-          period: cmd.period ?? keep?.period,
-          statement: keep?.statement,
-          filter: keep?.filter,
-        },
-        newPanel,
-      )
-    },
-    [panels, activeId, place, setWs],
+  /** Focus a panel and merge `patch` into it. */
+  const focus = useCallback(
+    (id: string, patch: Record<string, unknown> = {}) =>
+      setWs((w) => ({
+        activeId: id,
+        panels: w.panels.map((p) => (p.id === id ? ({ ...p, ...patch } as PanelState) : p)),
+      })),
+    [setWs],
   )
 
-  const update = (id: string, patch: Partial<PanelState>) =>
+  const runCommand = useCallback(
+    (input: string, newPanel: boolean, into?: string): string | null => {
+      const cmd = parseCommand(input)
+      if (!cmd) return null
+      switch (cmd.kind) {
+        case 'error':
+          return cmd.message
+
+        case 'global': {
+          if (cmd.command === 'CLEAR') {
+            setWs({ panels: [], activeId: null })
+            return null
+          }
+          const existing = SINGLE_INSTANCE.has(cmd.command) && panels.find((p) => p.kind === cmd.command)
+          if (existing) {
+            focus(existing.id)
+            return null
+          }
+          return place({ kind: cmd.command }, newPanel)
+        }
+
+        case 'eco': {
+          const existing = panels.find((p) => p.kind === 'ECO')
+          if (existing) {
+            focus(existing.id, { indicator: cmd.indicator })
+            return null
+          }
+          return place({ kind: 'ECO', indicator: cmd.indicator }, newPanel)
+        }
+
+        case 'watchlist':
+        case 'watchlist-edit': {
+          const list = cmd.list || undefined
+          // Use the active watchlist panel, else any open one, unless a new panel was asked for.
+          const target = active?.kind === 'W' ? active : panels.find((p) => p.kind === 'W')
+          let panelId = target?.id
+          if (target && !newPanel) focus(target.id, list ? { list } : {})
+          else {
+            const err = place({ kind: 'W', list }, newPanel)
+            if (err) return err
+            panelId = undefined // the new panel; it becomes the active one
+          }
+          if (cmd.kind === 'watchlist-edit') {
+            // Without a list name, change the list that panel shows (or the first list).
+            const name = list ?? (target && !newPanel && target.kind === 'W' ? target.list : undefined)
+            void editWatchlist(cmd.action, cmd.symbol, name).then((n) => setWatchNotice({ ...n, panelId }))
+          }
+          return null
+        }
+
+        case 'function': {
+          // Carry the replaced panel's view settings (chart range, FA statement, CF filter) over to the new view.
+          const target = into ? panels.find((p) => p.id === into) : active
+          const keep = target && isSymbolSpec(target) ? target : undefined
+          return place(
+            {
+              kind: cmd.fn,
+              symbol: cmd.symbol,
+              range: cmd.range ?? keep?.range,
+              period: cmd.period ?? keep?.period,
+              statement: keep?.statement,
+              filter: keep?.filter,
+            },
+            newPanel,
+            into,
+          )
+        }
+      }
+    },
+    [panels, active, place, focus, setWs],
+  )
+
+  const update = (id: string, patch: Record<string, unknown>) =>
     setWs((w) => ({ ...w, panels: w.panels.map((p) => (p.id === id ? ({ ...p, ...patch } as PanelState) : p)) }))
   const close = (id: string) =>
     setWs((w) => {
@@ -135,6 +195,20 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [panels, setWs])
 
+  // The panel that shows the last "W ADD …" result: the one it was run against, else the active or first W panel.
+  const noticeTarget =
+    (watchNotice?.panelId && panels.some((p) => p.id === watchNotice.panelId) && watchNotice.panelId) ||
+    (active?.kind === 'W' ? active.id : panels.find((p) => p.kind === 'W')?.id)
+  /**
+   * Rows in W, FX and CRYPTO open symbols without replacing the list you clicked in: into the first other panel,
+   * or a new panel when it's the only one. Shift-click always opens a new panel.
+   */
+  const openFrom = (sourceId: string) => (command: string, newPanel: boolean) => {
+    const other = panels.find((p) => p.id !== sourceId)
+    if (newPanel || !other) runCommand(command, true)
+    else runCommand(command, false, other.id)
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -153,45 +227,80 @@ export default function App() {
             onActivate: () => activate(p.id),
             onClose: () => close(p.id),
           }
-          if (p.kind === 'HELP') return <HelpPanel key={p.id} {...frame} onRun={(c) => runCommand(c, false)} />
+
+          switch (p.kind) {
+            case 'HELP':
+              return <HelpPanel key={p.id} {...frame} onRun={(c) => runCommand(c, false)} />
+            case 'W':
+              return (
+                <WatchlistPanel
+                  key={p.id}
+                  {...frame}
+                  listName={p.list}
+                  onSelectList={(list) => update(p.id, { list })}
+                  onOpen={openFrom(p.id)}
+                  notice={p.id === noticeTarget ? watchNotice : undefined}
+                />
+              )
+            case 'ECO':
+              return (
+                <EcoPanel
+                  key={p.id}
+                  {...frame}
+                  indicator={p.indicator}
+                  range={p.ecoRange && ECO_RANGES.includes(p.ecoRange) ? p.ecoRange : '5Y'}
+                  onChange={(patch) => update(p.id, patch)}
+                />
+              )
+            case 'YC':
+              return <YieldCurvePanel key={p.id} {...frame} />
+            case 'FX':
+              return <FxPanel key={p.id} {...frame} onOpen={openFrom(p.id)} />
+            case 'CRYPTO':
+              return <CryptoPanel key={p.id} {...frame} onOpen={openFrom(p.id)} />
+          }
 
           const onSwitch = (fn: FunctionCode) => update(p.id, { kind: fn })
-          if (p.kind === 'FA')
-            return (
-              <FinancialsPanel
-                key={p.id}
-                {...frame}
-                symbol={p.symbol}
-                period={p.period && PERIODS.includes(p.period) ? p.period : 'annual'}
-                statement={p.statement && STATEMENTS.includes(p.statement) ? p.statement : 'income'}
-                onChange={(patch) => update(p.id, patch)}
-                onSwitch={onSwitch}
-              />
-            )
-          if (p.kind === 'N') return <NewsPanel key={p.id} {...frame} symbol={p.symbol} onSwitch={onSwitch} />
-          if (p.kind === 'CF')
-            return (
-              <FilingsPanel
-                key={p.id}
-                {...frame}
-                symbol={p.symbol}
-                filter={p.filter && (FILING_CATEGORIES as readonly string[]).includes(p.filter) ? p.filter : 'all'}
-                onFilterChange={(filter) => update(p.id, { filter })}
-                onSwitch={onSwitch}
-              />
-            )
-          if (p.kind === 'GP')
-            return (
-              <ChartPanel
-                key={p.id}
-                {...frame}
-                symbol={p.symbol}
-                range={p.range && RANGES.includes(p.range) ? p.range : '6M'}
-                onRangeChange={(range) => update(p.id, { range })}
-                onSwitch={onSwitch}
-              />
-            )
-          return <DescriptionPanel key={p.id} {...frame} symbol={p.symbol} onSwitch={onSwitch} />
+          switch (p.kind) {
+            case 'FA':
+              return (
+                <FinancialsPanel
+                  key={p.id}
+                  {...frame}
+                  symbol={p.symbol}
+                  period={p.period && PERIODS.includes(p.period) ? p.period : 'annual'}
+                  statement={p.statement && STATEMENTS.includes(p.statement) ? p.statement : 'income'}
+                  onChange={(patch) => update(p.id, patch)}
+                  onSwitch={onSwitch}
+                />
+              )
+            case 'N':
+              return <NewsPanel key={p.id} {...frame} symbol={p.symbol} onSwitch={onSwitch} />
+            case 'CF':
+              return (
+                <FilingsPanel
+                  key={p.id}
+                  {...frame}
+                  symbol={p.symbol}
+                  filter={p.filter && (FILING_CATEGORIES as readonly string[]).includes(p.filter) ? p.filter : 'all'}
+                  onFilterChange={(filter) => update(p.id, { filter })}
+                  onSwitch={onSwitch}
+                />
+              )
+            case 'GP':
+              return (
+                <ChartPanel
+                  key={p.id}
+                  {...frame}
+                  symbol={p.symbol}
+                  range={p.range && RANGES.includes(p.range) ? p.range : '6M'}
+                  onRangeChange={(range) => update(p.id, { range })}
+                  onSwitch={onSwitch}
+                />
+              )
+            default:
+              return <DescriptionPanel key={p.id} {...frame} symbol={p.symbol} onSwitch={onSwitch} />
+          }
         })}
       </main>
 
@@ -200,13 +309,30 @@ export default function App() {
   )
 }
 
+const sameName = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'accent' }) === 0
+
+/** Carries out "W ADD NVDA [TO list]" or "W DEL NVDA [FROM list]" and describes what happened. */
+async function editWatchlist(action: 'add' | 'remove', symbol: string, listName?: string): Promise<WatchNotice> {
+  const id = Date.now()
+  try {
+    const lists = await api.watchlists()
+    const target = listName ? lists.find((l) => sameName(l.name, listName)) : lists[0]
+    if (!target) return { id, text: `There's no watchlist called "${listName}".`, error: true }
+    if (action === 'add') await api.addToWatchlist(target.id, symbol)
+    else await api.removeFromWatchlist(target.id, symbol)
+    return { id, text: `${action === 'add' ? 'Added' : 'Removed'} ${symbol} ${action === 'add' ? 'to' : 'from'} ${target.name}.`, error: false }
+  } catch (e) {
+    return { id, text: (e as Error).message, error: true }
+  }
+}
+
 function EmptyState({ onRun }: { onRun: (cmd: string) => void }) {
   return (
     <div className="empty-state">
       <h2>No panels open</h2>
       <span>Type a command above, or try one of these:</span>
       <div className="examples">
-        {['AAPL DES', 'NVDA GP 1Y', 'MSFT FA', 'TSLA N', 'AAPL CF', '^GSPC GP', 'HELP'].map((c) => (
+        {['AAPL DES', 'NVDA GP 1Y', 'MSFT FA', 'W', 'ECO', 'YC', 'FX', 'CRYPTO', 'HELP'].map((c) => (
           <button key={c} className="chip mono" onClick={() => onRun(c)}>
             {c}
           </button>

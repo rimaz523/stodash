@@ -1,17 +1,26 @@
-import type { Page, Route } from '@playwright/test'
+import type { Page, Route, WebSocketRoute } from '@playwright/test'
 import type {
   CompanyProfile,
+  CryptoBoard,
+  EcoDashboard,
+  EcoIndicator,
+  EcoSeries,
   Filing,
   FilingCategory,
   FilingList,
   FinancialStatements,
+  FxBoard,
   Health,
   NewsFeed,
   PriceHistory,
+  ProviderName,
   ProviderStatus,
   Quote,
   SearchResult,
   StatementRow,
+  StreamState,
+  Watchlist,
+  YieldCurve,
 } from '../src/api/types.ts'
 
 /**
@@ -37,6 +46,13 @@ export const INSTRUMENTS: Record<string, Instrument> = {
   MSFT: { name: 'Microsoft Corporation', type: 'EQUITY', exchange: 'NasdaqGS', currency: 'USD', price: 512.3, change: -2.1 },
   TSLA: { name: 'Tesla, Inc.', type: 'EQUITY', exchange: 'NasdaqGS', currency: 'USD', price: 401.2, change: 6.4 },
   JPM: { name: 'JPMorgan Chase & Co.', type: 'EQUITY', exchange: 'NYSE', currency: 'USD', price: 316.74, change: -0.36 },
+  GOOGL: { name: 'Alphabet Inc.', type: 'EQUITY', exchange: 'NasdaqGS', currency: 'USD', price: 273.1, change: -5.95 },
+  AMZN: { name: 'Amazon.com, Inc.', type: 'EQUITY', exchange: 'NasdaqGS', currency: 'USD', price: 244.43, change: -7.86 },
+  NVDA: { name: 'NVIDIA Corporation', type: 'EQUITY', exchange: 'NasdaqGS', currency: 'USD', price: 149.3, change: -6.08 },
+  META: { name: 'Meta Platforms, Inc.', type: 'EQUITY', exchange: 'NasdaqGS', currency: 'USD', price: 609.89, change: 2.2 },
+  AMD: { name: 'Advanced Micro Devices, Inc.', type: 'EQUITY', exchange: 'NasdaqGS', currency: 'USD', price: 140.5, change: 1.1 },
+  W: { name: 'Wayfair Inc.', type: 'EQUITY', exchange: 'NYSE', currency: 'USD', price: 97.11, change: 1.4 },
+  'EURUSD=X': { name: 'EUR/USD', type: 'CURRENCY', exchange: 'CCY', currency: 'USD', price: 1.0963, change: -0.002 },
   'RY.TO': { name: 'Royal Bank of Canada', type: 'EQUITY', exchange: 'Toronto', currency: 'CAD', price: 269.26, change: -0.38 },
   '^GSPC': { name: 'S&P 500', type: 'INDEX', exchange: 'SNP', currency: 'USD', price: 7182.78, change: -18.31 },
   '^IXIC': { name: 'NASDAQ Composite', type: 'INDEX', exchange: 'Nasdaq', currency: 'USD', price: 23585.8, change: -148.2 },
@@ -245,22 +261,148 @@ export function search(q: string): SearchResult[] {
     .map(([sym, i]) => ({ symbol: sym, name: i.name, type: i.type, exchange: i.exchange }))
 }
 
-const provider = (state: ProviderStatus['state']): ProviderStatus => ({
+const provider = (state: ProviderStatus['state'], error = 'SEC EDGAR timed out.'): ProviderStatus => ({
   configured: state !== 'off',
   state,
   lastOk: state === 'up' ? '2026-11-26T04:00:00Z' : null,
   lastFailure: state === 'down' ? '2026-11-26T04:00:00Z' : null,
-  lastError: state === 'down' ? 'SEC EDGAR timed out.' : null,
+  lastError: state === 'down' ? error : null,
 })
 
-export function health(states: Partial<Record<keyof Health['providers'], ProviderStatus['state']>> = {}): Health {
+export function health(
+  states: Partial<Record<ProviderName, ProviderStatus['state']>> = {},
+  stream: StreamState = 'idle',
+): Health {
+  const defaults: Record<ProviderName, ProviderStatus['state']> = {
+    yahoo: 'up',
+    sec: 'up',
+    finnhub: 'off',
+    fred: 'up',
+    treasury: 'up',
+    coingecko: 'up',
+    frankfurter: 'unknown',
+    database: 'up',
+  }
+  const providers = Object.fromEntries(
+    (Object.keys(defaults) as ProviderName[]).map((name) => [name, provider(states[name] ?? defaults[name])]),
+  ) as Record<ProviderName, ProviderStatus>
+  return { status: 'ok', providers, stream: { state: stream, error: null } }
+}
+
+// ------------------------------------------------------------- macro data
+
+const ECO_DEFS: [id: string, label: string, series: string, unit: EcoIndicator['unit'], frequency: string, latest: number, previous: number][] = [
+  ['CPI', 'CPI inflation', 'CPIAUCSL', 'percent', 'Monthly', 2.94, 3.01],
+  ['PCE', 'Core PCE inflation', 'PCEPILFE', 'percent', 'Monthly', 2.71, 2.75],
+  ['UNEMP', 'Unemployment', 'UNRATE', 'percent', 'Monthly', 4.3, 4.2],
+  ['FEDFUNDS', 'Fed funds rate', 'DFF', 'percent', 'Daily', 3.88, 3.88],
+  ['GDP', 'Real GDP growth', 'A191RL1Q225SBEA', 'percent', 'Quarterly', 2.1, 3.3],
+  ['SPREAD', '10Y–2Y spread', 'T10Y2Y', 'points', 'Daily', 0.24, 0.22],
+  ['MORTGAGE', '30-year mortgage rate', 'MORTGAGE30US', 'percent', 'Weekly', 6.12, 6.17],
+  ['CLAIMS', 'Initial jobless claims', 'ICSA', 'count', 'Weekly', 221000, 216000],
+  ['SENTIMENT', 'Consumer sentiment', 'UMCSENT', 'index', 'Monthly', 71.8, 70.1],
+]
+
+const monthly = (n: number, value: (i: number) => number) =>
+  Array.from({ length: n }, (_, i) => {
+    const d = new Date(Date.UTC(2026, 9 - (n - 1 - i), 1))
+    return { date: d.toISOString().slice(0, 10), value: value(i) }
+  })
+
+export function eco(configured = true): EcoDashboard {
+  if (!configured)
+    return {
+      configured: false,
+      note: 'FRED isn\'t configured. Get a free key at https://fred.stlouisfed.org/docs/api/api_key.html.',
+      indicators: [],
+      source: 'FRED (Federal Reserve Bank of St. Louis)',
+    }
   return {
-    status: 'ok',
-    providers: {
-      yahoo: provider(states.yahoo ?? 'up'),
-      sec: provider(states.sec ?? 'up'),
-      finnhub: provider(states.finnhub ?? 'off'),
-    },
+    configured: true,
+    note: null,
+    source: 'FRED (Federal Reserve Bank of St. Louis)',
+    indicators: ECO_DEFS.map(([id, label, seriesId, unit, frequency, latest, previous]) => ({
+      id, label, seriesId, unit, frequency,
+      description: `${label} description.`,
+      latest, previous, change: latest - previous,
+      latestDate: '2026-10-01',
+      sparkline: monthly(24, (i) => previous + (latest - previous) * (i / 23)),
+    })),
+  }
+}
+
+export function ecoSeries(id: string, range: string): EcoSeries | null {
+  const d = ECO_DEFS.find((x) => x[0] === id)
+  if (!d) return null
+  const [, label, seriesId, unit, frequency, latest] = d
+  return {
+    id, label, seriesId, unit, frequency, range: range as EcoSeries['range'],
+    description: `${label} description.`,
+    points: monthly(60, (i) => latest + Math.sin(i / 6)),
+    source: 'FRED (Federal Reserve Bank of St. Louis)',
+  }
+}
+
+export function yieldCurve(inverted = false): YieldCurve {
+  const maturities = [['1M', 1], ['3M', 3], ['6M', 6], ['1Y', 12], ['2Y', 24], ['5Y', 60], ['10Y', 120], ['30Y', 360]] as const
+  const latest = inverted ? [4.9, 4.8, 4.7, 4.6, 4.5, 4.3, 4.2, 4.4] : [4.27, 4.34, 4.44, 4.56, 4.61, 4.65, 4.85, 5.24]
+  return {
+    maturities: maturities.map(([label, months]) => ({ label, months })),
+    curves: [
+      { label: 'Latest', date: '2026-11-25', yields: latest },
+      { label: '1 month ago', date: '2026-10-23', yields: [4.11, 4.22, 4.3, 4.44, 4.69, 4.82, 5.0, 5.33] },
+      { label: '1 year ago', date: '2025-11-25', yields: [4.04, 3.9, 3.75, 3.6, 3.43, 3.55, 4.01, 4.67] },
+    ],
+    spreads: [
+      { label: '10Y–2Y', bp: Math.round((latest[6] - latest[4]) * 100) },
+      { label: '10Y–3M', bp: Math.round((latest[6] - latest[1]) * 100) },
+    ],
+    source: 'US Treasury (daily par yield curve rates)',
+  }
+}
+
+export function fx(): FxBoard {
+  const pairs: [string, string, string, number, number, string][] = [
+    ['EUR', 'USD', 'EURUSD=X', 1.0963, -0.16, 'Yahoo'],
+    ['GBP', 'USD', 'GBPUSD=X', 1.3101, -0.11, 'Yahoo'],
+    ['USD', 'JPY', 'JPY=X', 159.16, 0.02, 'Yahoo'],
+    ['USD', 'CHF', 'CHF=X', 0.8321, 0.21, 'Yahoo'],
+    ['USD', 'CAD', 'CAD=X', 1.4222, 0.08, 'Yahoo'],
+    ['AUD', 'USD', 'AUDUSD=X', 0.6646, 0.26, 'Yahoo'],
+    ['NZD', 'USD', 'NZDUSD=X', 0.5484, -0.07, 'ECB'],
+    ['USD', 'CNY', 'CNY=X', 6.6626, 0.05, 'Yahoo'],
+  ]
+  const perUsd: Record<string, number> = { USD: 1 }
+  for (const [base, q, , rate] of pairs) if (base === 'USD') perUsd[q] = rate
+    else perUsd[base] = 1 / rate
+  const currencies = ['USD', 'EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD', 'NZD', 'CNY']
+  return {
+    pairs: pairs.map(([base, q, symbol, rate, pct, source]) => ({
+      pair: `${base}/${q}`, base, quote: q, symbol, rate,
+      change: source === 'ECB' ? null : (rate * pct) / 100,
+      changePercent: source === 'ECB' ? null : pct,
+      source, time: '2026-11-25T21:00:00Z',
+    })),
+    currencies,
+    matrix: currencies.map((from) => currencies.map((to) => perUsd[to] / perUsd[from])),
+  }
+}
+
+export function crypto(): CryptoBoard {
+  const coins: [string, string, string, number, number, number, number][] = [
+    ['bitcoin', 'BTC', 'Bitcoin', 60892, 2.94, -3.58, 1.22e12],
+    ['ethereum', 'ETH', 'Ethereum', 1698.93, 2.41, -5.12, 2.07e11],
+    ['tether', 'USDT', 'Tether', 0.999, 0.01, -0.02, 1.73e11],
+    ['solana', 'SOL', 'Solana', 71.13, 6.5, 4.2, 4.2e10],
+  ]
+  return {
+    source: 'CoinGecko',
+    asOf: '2026-11-26T04:00:00Z',
+    coins: coins.map(([id, symbol, name, price, d24, d7, cap], i) => ({
+      rank: i + 1, id, symbol, name, price, change24h: d24, change7d: d7, marketCap: cap, volume24h: cap / 30,
+      sparkline: Array.from({ length: 42 }, (_, k) => price * (1 + Math.sin(k / 5) * 0.02)),
+      yahooSymbol: `${symbol}-USD`,
+    })),
   }
 }
 
@@ -268,48 +410,26 @@ export function health(states: Partial<Record<keyof Health['providers'], Provide
 
 export type Reply = { status: number; body: unknown } | 'abort'
 
-const notFound = (symbol: string): Reply => ({
-  status: 404,
-  body: { title: 'Symbol not found', status: 404, detail: `No instrument found for '${symbol}'.` },
-})
+const ok = (body: unknown): Reply => ({ status: 200, body })
+const problem = (status: number, title: string, detail: string): Reply => ({ status, body: { title, status, detail } })
+const notFound = (symbol: string): Reply => problem(404, 'Symbol not found', `No instrument found for '${symbol}'.`)
 
-/** The default answers, mirroring the real endpoints in backend/Stodash.Api/Endpoints/MarketEndpoints.cs. */
-function defaultReply(url: URL): Reply {
-  const parts = url.pathname.split('/').slice(2).map(decodeURIComponent) // ['quote', 'AAPL']
-  const [kind, symbol = ''] = parts
-  const ok = (body: unknown): Reply => ({ status: 200, body })
-  const known = symbol in INSTRUMENTS
-
-  switch (kind) {
-    case 'health':
-      return ok(health())
-    case 'search':
-      return ok(search(url.searchParams.get('q') ?? ''))
-    case 'quotes':
-      return ok((url.searchParams.get('symbols') ?? '').split(',').filter((s) => s in INSTRUMENTS).map(quote))
-    case 'quote':
-      return known ? ok(quote(symbol)) : notFound(symbol)
-    case 'history':
-      return known ? ok(history(symbol, url.searchParams.get('range') ?? '6M')) : notFound(symbol)
-    case 'profile':
-      return known ? ok(profile(symbol)) : notFound(symbol)
-    case 'financials':
-      return known
-        ? ok(financials(symbol, url.searchParams.get('period') === 'quarterly' ? 'quarterly' : 'annual'))
-        : notFound(symbol)
-    case 'news':
-      return known ? ok(news(symbol)) : notFound(symbol)
-    case 'filings':
-      return known ? ok(filings(symbol)) : notFound(symbol)
-    default:
-      return { status: 500, body: { title: `The mock API has no route for ${url.pathname}` } }
-  }
-}
+const MAG7 = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA']
+/** US stock tickers the fake stream reports as live (like the backend's rule). */
+const streamable = (s: string) => /^[A-Z]{1,5}(-[A-Z])?$/.test(s)
 
 export class MockApi {
-  /** Every /api request the page made, as "path?query", in order. */
+  /** Every /api request the page made, as "METHOD path?query" for writes and "path?query" for reads, in order. */
   readonly requests: string[] = []
+  /** The fake user's watchlists. Tests can read or replace them. */
+  watchlists: Watchlist[] = [{ id: 1, name: 'Main', symbols: [...MAG7] }]
+  /** What the fake /ws/quotes reports: the backend's stream state. */
+  streamState: StreamState = 'live'
+  /** Whether ECO has a FRED key. */
+  ecoConfigured = true
   private readonly overrides: [RegExp, Reply | ((url: URL) => Reply)][] = []
+  private readonly sockets = new Set<{ ws: WebSocketRoute; symbols: string[] }>()
+  private nextId = 2
 
   /** Answer requests whose "path?query" matches `pattern` with `reply` instead of the default. Latest wins. */
   on(pattern: RegExp, reply: Reply | ((url: URL) => Reply)) {
@@ -319,22 +439,149 @@ export class MockApi {
   async install(page: Page) {
     // Match on the path, not a "**/api/**" glob, which would also catch Vite's /src/api/*.ts modules.
     await page.route((url) => url.pathname.startsWith('/api/'), (route) => this.handle(route))
+    await page.routeWebSocket(/\/ws\/quotes$/, (ws) => this.connect(ws))
+  }
+
+  /** Sends trades to every open /ws/quotes connection watching those symbols. */
+  pushTrades(trades: { symbol: string; price: number }[]) {
+    const time = Date.now() + 60_000 // newer than any quote, so the panel uses the trade
+    for (const s of this.sockets) {
+      const mine = trades.filter((t) => s.symbols.includes(t.symbol)).map((t) => ({ ...t, volume: 100, time }))
+      if (mine.length) s.ws.send(JSON.stringify({ type: 'trades', trades: mine }))
+    }
+  }
+
+  private connect(ws: WebSocketRoute) {
+    const socket = { ws, symbols: [] as string[] }
+    this.sockets.add(socket)
+    ws.onClose(() => this.sockets.delete(socket))
+    ws.onMessage((raw) => {
+      const msg = JSON.parse(String(raw)) as { subscribe?: string[] }
+      if (!msg.subscribe) return
+      socket.symbols = msg.subscribe
+      const live = this.streamState === 'live' ? msg.subscribe.filter(streamable) : []
+      ws.send(JSON.stringify({ type: 'status', state: this.streamState, live }))
+    })
   }
 
   private async handle(route: Route) {
-    const url = new URL(route.request().url())
-    const key = url.pathname + url.search
-    this.requests.push(decodeURIComponent(key))
+    const req = route.request()
+    const url = new URL(req.url())
+    const key = decodeURIComponent(url.pathname + url.search)
+    const method = req.method()
+    this.requests.push(method === 'GET' ? key : `${method} ${key}`)
 
-    const override = this.overrides.find(([re]) => re.test(decodeURIComponent(key)))
-    const reply = override ? (typeof override[1] === 'function' ? override[1](url) : override[1]) : defaultReply(url)
+    const override = this.overrides.find(([re]) => re.test(key))
+    const reply = override
+      ? typeof override[1] === 'function'
+        ? override[1](url)
+        : override[1]
+      : this.defaultReply(url, method, req.postData() ? (JSON.parse(req.postData()!) as Record<string, unknown>) : {})
     if (reply === 'abort') return route.abort('connectionrefused')
 
-    const problem = reply.status >= 400
+    if (reply.status === 204) return route.fulfill({ status: 204 })
     await route.fulfill({
       status: reply.status,
-      contentType: problem ? 'application/problem+json' : 'application/json',
+      contentType: reply.status >= 400 ? 'application/problem+json' : 'application/json',
       body: JSON.stringify(reply.body),
     })
+  }
+
+  /** The default answers, mirroring the real endpoints in backend/Stodash.Api/Endpoints. */
+  private defaultReply(url: URL, method: string, body: Record<string, unknown>): Reply {
+    const parts = url.pathname.split('/').slice(2).map(decodeURIComponent) // ['quote', 'AAPL']
+    const [kind, symbol = ''] = parts
+    const known = symbol in INSTRUMENTS
+
+    switch (kind) {
+      case 'health':
+        return ok(health({ fred: this.ecoConfigured ? 'up' : 'off' }, this.streamState))
+      case 'search':
+        return ok(search(url.searchParams.get('q') ?? ''))
+      case 'quotes':
+        return ok((url.searchParams.get('symbols') ?? '').split(',').filter((s) => s in INSTRUMENTS).map(quote))
+      case 'quote':
+        return known ? ok(quote(symbol)) : notFound(symbol)
+      case 'history':
+        return known ? ok(history(symbol, url.searchParams.get('range') ?? '6M')) : notFound(symbol)
+      case 'profile':
+        return known ? ok(profile(symbol)) : notFound(symbol)
+      case 'financials':
+        return known
+          ? ok(financials(symbol, url.searchParams.get('period') === 'quarterly' ? 'quarterly' : 'annual'))
+          : notFound(symbol)
+      case 'news':
+        return known ? ok(news(symbol)) : notFound(symbol)
+      case 'filings':
+        return known ? ok(filings(symbol)) : notFound(symbol)
+      case 'watchlists':
+        return this.watchlistReply(parts.slice(1), method, body)
+      case 'eco':
+        if (parts[1]) {
+          const s = ecoSeries(parts[1], url.searchParams.get('range') ?? '5Y')
+          return s ? ok(s) : problem(404, 'Not found', `Unknown indicator '${parts[1]}'.`)
+        }
+        return ok(eco(this.ecoConfigured))
+      case 'yieldcurve':
+        return ok(yieldCurve())
+      case 'fx':
+        return ok(fx())
+      case 'crypto':
+        return ok(crypto())
+      default:
+        return { status: 500, body: { title: `The mock API has no route for ${url.pathname}` } }
+    }
+  }
+
+  /** A small in-memory version of WatchlistService, with the same rules and messages. */
+  private watchlistReply(rest: string[], method: string, body: Record<string, unknown>): Reply {
+    const [idPart, sub, sym] = rest
+    const name = typeof body.name === 'string' ? body.name.trim() : ''
+    const taken = (n: string, except?: number) =>
+      this.watchlists.some((l) => l.id !== except && l.name.toLowerCase() === n.toLowerCase())
+
+    if (!idPart) {
+      if (method === 'GET') return ok(this.watchlists)
+      if (!name) return problem(400, 'Invalid request', 'Give the watchlist a name.')
+      if (taken(name)) return problem(409, 'Conflict', `You already have a watchlist called "${name}".`)
+      const created = { id: this.nextId++, name, symbols: [] }
+      this.watchlists.push(created)
+      return { status: 201, body: created }
+    }
+
+    const list = this.watchlists.find((l) => l.id === Number(idPart))
+    if (!list) return problem(404, 'Not found', `Watchlist ${idPart} doesn't exist.`)
+    const save = (updated: Watchlist): Reply => {
+      this.watchlists = this.watchlists.map((l) => (l.id === updated.id ? updated : l))
+      return ok(updated)
+    }
+
+    if (!sub) {
+      if (method === 'PATCH') {
+        if (!name) return problem(400, 'Invalid request', 'Give the watchlist a name.')
+        if (taken(name, list.id)) return problem(409, 'Conflict', `You already have a watchlist called "${name}".`)
+        return save({ ...list, name })
+      }
+      if (method === 'DELETE') {
+        if (this.watchlists.length === 1)
+          return problem(400, 'Invalid request', 'You need at least one watchlist. Create another before deleting this one.')
+        this.watchlists = this.watchlists.filter((l) => l.id !== list.id)
+        return { status: 204, body: null }
+      }
+    }
+    if (sub === 'quotes') return ok(list.symbols.filter((s) => s in INSTRUMENTS).map(quote))
+    if (sub === 'order') return save({ ...list, symbols: (body.symbols as string[]) ?? list.symbols })
+    if (sub === 'items' && method === 'POST') {
+      const s = String(body.symbol ?? '').toUpperCase()
+      if (list.symbols.includes(s)) return problem(409, 'Conflict', `${s} is already in "${list.name}".`)
+      if (!(s in INSTRUMENTS)) return notFound(s)
+      return save({ ...list, symbols: [...list.symbols, s] })
+    }
+    if (sub === 'items' && method === 'DELETE') {
+      const s = (sym ?? '').toUpperCase()
+      if (!list.symbols.includes(s)) return problem(404, 'Not found', `${s} isn't in "${list.name}".`)
+      return save({ ...list, symbols: list.symbols.filter((x) => x !== s) })
+    }
+    return { status: 500, body: { title: `The mock API has no watchlist route for ${method} ${rest.join('/')}` } }
   }
 }

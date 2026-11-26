@@ -9,6 +9,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': { target: 'http://localhost:5080', changeOrigin: true },
+      // Live watchlist prices (WebSocket relay of Finnhub trades).
+      '/ws': { target: 'ws://localhost:5080', ws: true },
     },
   },
 })

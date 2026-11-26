@@ -1,5 +1,4 @@
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.Caching.Memory;
 using Stodash.Api.Infrastructure;
 using Stodash.Api.Providers;
 
@@ -8,7 +7,7 @@ namespace Stodash.Api.Services;
 public sealed record SecCompany(long Cik, string Ticker, string Title);
 
 /// <summary>Maps tickers to SEC CIK numbers using SEC's own ticker list, refreshed daily.</summary>
-public sealed class SecCompanyLookup(SecClient sec, IMemoryCache cache)
+public sealed class SecCompanyLookup(SecClient sec, IMarketCache cache)
 {
     public bool IsConfigured => sec.IsConfigured;
 
@@ -20,7 +19,7 @@ public sealed class SecCompanyLookup(SecClient sec, IMemoryCache cache)
     {
         if (symbol.StartsWith('^') || symbol.Contains('=')) return null;
 
-        var map = await cache.GetOrLoadAsync("sec:tickers", TimeSpan.FromHours(24), async () =>
+        var map = await cache.GetOrLoadAsync("sec:tickers", TimeSpan.FromHours(24), durable: true, load: async () =>
         {
             var root = await sec.GetCompanyTickersAsync(ct) as JsonObject
                        ?? throw new UpstreamException("SEC's ticker list was empty.");

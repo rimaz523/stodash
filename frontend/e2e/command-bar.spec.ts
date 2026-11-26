@@ -64,6 +64,33 @@ test.describe('command bar', () => {
     await expect(panels(page)).toHaveCount(2) // nothing changed
   })
 
+  test('a function after W means the ticker W (Wayfair), not watchlists', async ({ page }) => {
+    await page.goto('/')
+    await run(page, 'W DES')
+    await expect(panel(page, 'DES', 'W')).toContainText('Wayfair Inc.')
+    await expect(panel(page, 'W')).toHaveCount(0)
+  })
+
+  test('global commands explain their arguments', async ({ page }) => {
+    await page.goto('/')
+    await run(page, 'ECO NOPE')
+    await expect(page.getByRole('alert').filter({ hasText: 'Unknown indicator "NOPE"' })).toBeVisible()
+    await run(page, 'YC 1Y')
+    await expect(page.getByRole('alert').filter({ hasText: "YC doesn't take anything after it" })).toBeVisible()
+    await run(page, 'W ADD')
+    await expect(page.getByRole('alert').filter({ hasText: 'Which symbol?' })).toBeVisible()
+  })
+
+  test('FX, YC and CRYPTO open once; running them again focuses the panel', async ({ page }) => {
+    await page.goto('/')
+    await run(page, 'FX', { newPanel: true })
+    await expect(panels(page)).toHaveCount(3)
+    await panels(page).first().click()
+    await run(page, 'FX', { newPanel: true })
+    await expect(panels(page)).toHaveCount(3)
+    await expect(panel(page, 'FX')).toHaveClass(/active/)
+  })
+
   test('ArrowUp walks back through history', async ({ page }) => {
     await page.goto('/')
     await run(page, 'MSFT FA')

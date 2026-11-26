@@ -10,15 +10,22 @@ public static class MarketEndpoints
     {
         var api = app.MapGroup("/api").WithTags("Market");
 
-        api.MapGet("/health", (ProviderHealth health, FinnhubClient finnhub, SecClient sec) => new
+        api.MapGet("/health", (ProviderHealth health, FinnhubClient finnhub, SecClient sec, FredClient fred, QuoteStream stream) => new
             {
                 status = "ok",
                 providers = new
                 {
                     yahoo = health.Status(ProviderHealth.Yahoo, configured: true),
-                    finnhub = health.Status(ProviderHealth.Finnhub, finnhub.IsConfigured),
                     sec = health.Status(ProviderHealth.Sec, sec.IsConfigured),
+                    finnhub = health.Status(ProviderHealth.Finnhub, finnhub.IsConfigured),
+                    fred = health.Status(ProviderHealth.Fred, fred.IsConfigured),
+                    treasury = health.Status(ProviderHealth.Treasury, configured: true),
+                    coingecko = health.Status(ProviderHealth.CoinGecko, configured: true),
+                    frankfurter = health.Status(ProviderHealth.Frankfurter, configured: true),
+                    database = health.Status(ProviderHealth.Database, configured: true),
                 },
+                // The live watchlist stream: off (no Finnhub key), idle (no one watching), connecting, live or error.
+                stream = new { state = stream.State, error = stream.State == "error" ? stream.LastError : null },
             })
             .WithSummary("API status, plus each provider's configuration and the outcome of its most recent call.");
 

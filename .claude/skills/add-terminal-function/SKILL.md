@@ -14,14 +14,20 @@ Work through these steps in order, then run the `verify-stodash` skill.
    fields for anything a provider may omit. Document units in a comment: say whether it's a percent or a fraction.
 2. **Provider:** add the raw call to the right client in `Providers/`. If it's a new provider, create a class like
    `FinnhubClient`: a typed `HttpClient` registered with `AddHttpClient<T>` in `Program.cs`, options bound from
-   config, and the key read from user-secrets or env. Map transport failures, timeouts and 429s to
-   `UpstreamException`, and "no such symbol" to `SymbolNotFoundException`.
+   config, and the key read from user-secrets or env (with an empty placeholder in appsettings.json). Simple
+   GET-based providers can use `ProviderHttp.GetAsync`, which maps transport failures, timeouts, 429s and 5xx to
+   `UpstreamException` and records `ProviderHealth`. Add a name in `ProviderHealth`, to `/api/health`, and to
+   `PROVIDERS` / `NAMES` in the frontend. Map "no such symbol" to `SymbolNotFoundException`.
 3. **Service:** add a method to `Services/MarketDataService.cs` (or a sibling service for macro/news data).
    - Call `NormalizeSymbol` first for ticker functions.
-   - Wrap in `Cached(key, ttl, …)` with a sensible TTL. Never cache failures.
+   - Cache through `IMarketCache.GetOrLoadAsync(key, ttl, load, durable)` with a sensible TTL. Use `durable: true` for
+     slow-changing data (it then also survives restarts in SQL), and only on records or classes, never tuples.
+     Never cache failures.
    - Map JSON with the lenient `J.Num / J.Str / J.Long` helpers.
    - Add a fallback provider when one exists (`catch (UpstreamException) when (other.IsConfigured)`).
-4. **Endpoint:** add `api.MapGet(...)` in `Endpoints/MarketEndpoints.cs` with `.WithSummary(...)`.
+   - User data goes in `Data/StodashDb` (add a migration) and is always filtered by `ICurrentUser`.
+4. **Endpoint:** add `api.MapGet(...)` with `.WithSummary(...)`: market data in `Endpoints/MarketEndpoints.cs`,
+   market-wide data in `MacroEndpoints.cs`, user data in its own file like `WatchlistEndpoints.cs`.
 5. `dotnet build backend/Stodash.Api` must give 0 warnings and 0 errors. Curl the endpoint, including a bad symbol (expect 404)
    and bad input (expect 400).
 
@@ -31,16 +37,20 @@ Work through these steps in order, then run the `verify-stodash` skill.
 7. **Client:** add a method to `api` in `api/client.ts`, URL-encoding user input with `enc`.
 8. **Command registry** in `lib/commands.ts`:
    - Ticker function: add to `FUNCTIONS` (`label`, `hint`). `FunctionCode` and autocomplete pick it up automatically.
-   - Global command: add to `GLOBAL_COMMANDS`, then handle it in `runCommand` in `App.tsx`.
+   - Global command (no ticker, like ECO or YC): add to `GLOBAL_COMMANDS`. Arguments go in `parseGlobal`. Keep the
+     rule that a function after the word (`W DES`) means a ticker. Handle it in `runCommand` in `App.tsx`, and add
+     it to `SINGLE_INSTANCE` there if a second copy makes no sense.
    - If it takes extra args (like GP's range), extend `parseCommand` and `ParsedCommand`.
-9. **Panel state:** extend `PanelSpec` in `panels/types.ts` if the panel needs new persisted fields, and widen
-   `isWorkspace` in `App.tsx` so saved layouts that use the new kind still validate.
+9. **Panel state:** ticker panels extend `SymbolSpec` and global panels add a member to `GlobalSpec` plus
+   `GLOBAL_KINDS` in `panels/types.ts`. `isWorkspace` in `App.tsx` accepts both, so saved layouts still validate.
+   Validate any persisted setting when rendering (fall back to a default).
 10. **Panel component:** create `panels/<Name>Panel.tsx`.
     - Wrap in `PanelFrame` with `fn`, `PanelTitle` and `FunctionSwitch` (ticker functions).
     - Load with `useApi(key, loader, refreshMs?)`. Show skeletons while loading and `LoadError` on failure.
     - Reuse `QuoteHeader`, the `.section-title` / `.stats` / `.facts` styles, and the formatters in `lib/format.ts`.
     - Put new CSS in `index.css` under a `/* ---- XX panel */` banner, using only theme variables.
-11. **Routing:** render the panel for its kind in the `panels.map` in `App.tsx`.
+11. **Routing:** render the panel for its kind in the `panels.map` in `App.tsx`. A panel that lists symbols opens
+    them with `openFrom(p.id)`, so clicking a row never replaces the list itself.
 12. **Docs in the app:** add the command to `COMMANDS` in `panels/HelpPanel.tsx`.
 
 ## Tests (`frontend/e2e`)
