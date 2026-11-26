@@ -105,11 +105,12 @@ frontend/e2e/                  Playwright: fixtures.ts (auto-installed mock, ope
 
 ## Conventions and gotchas
 
-- **Line endings are always CRLF**, in every file you create or edit (code, docs, config, tests, scripts).
-  `.gitattributes` (`* text=auto eol=crlf`) and `.editorconfig` enforce this. The Write tool, heredocs, `sed` and
-  node scripts all produce LF, so convert after writing (e.g. `node -e` with `s.replace(/\r?\n/g, '\r\n')`) and
-  check with node that no LF-only lines remain. Don't count endings with `grep -c $'\r$'` in Git Bash here: it reports
-  every file as CRLF.
+- **Line endings are always CRLF in files you create or edit** (code, docs, config, tests, scripts). The Write
+  tool, heredocs, `sed` and node scripts all produce LF, so convert each file you touched after writing it (e.g.
+  `node -e` with `s.replace(/\r?\n/g, '\r\n')`) and check it with node. Only your own changes: if the user or
+  their editor saves a file with LF, leave it as it is, and don't run repo-wide line-ending fixes. `.gitattributes`
+  (`* text=auto eol=crlf`) keeps the repo consistent anyway. Don't count endings with `grep -c $'\r$'` in Git Bash
+  here: it reports every file as CRLF.
 
 - **Adding a terminal function** (FA, N, ECO, …) touches about 10 places across both halves. Use the
   `/add-terminal-function` skill, which has the checklist.

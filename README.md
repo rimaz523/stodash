@@ -193,7 +193,9 @@ dotnet user-secrets set "Finnhub:ApiKey" "YOUR_KEY" --project backend/Stodash.Ap
 
 The key stays on the backend and never reaches the browser.
 
-`CRYPTO` works without a key. A free CoinGecko "demo" key raises its rate limits:
+`CRYPTO` needs no key or account. It uses CoinGecko's keyless public API (about 5 calls a minute, shared), and Stodash
+makes one call every 2 minutes at most. Only if you ever see CoinGecko rate-limit errors, create a free Demo account
+on CoinGecko's API pricing page, generate a key in its developer dashboard, and set it:
 `dotnet user-secrets set "CoinGecko:ApiKey" "YOUR_KEY" --project backend/Stodash.Api`.
 
 The status bar shows "Data: ● 7/7 ok". Hover over it to see every provider's state. A failing provider is also named
