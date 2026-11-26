@@ -62,6 +62,10 @@ public sealed class FinnhubClient(HttpClient http, IOptions<FinnhubOptions> opti
         return node as JsonArray ?? [];
     }
 
+    /// <summary>Market-wide headlines: <c>[{headline, source, url, datetime, summary, category}]</c>, newest first.</summary>
+    public async Task<JsonArray> GetGeneralNewsAsync(CancellationToken ct) =>
+        await GetAsync("news?category=general", ct) as JsonArray ?? [];
+
     private async Task<JsonNode?> GetAsync(string path, CancellationToken ct)
     {
         if (!IsConfigured) throw new UpstreamException("Finnhub is not configured.");

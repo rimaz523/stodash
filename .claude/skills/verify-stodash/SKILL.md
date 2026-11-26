@@ -45,6 +45,7 @@ is still running, so stop it rather than changing ports.
 
 ```powershell
 curl.exe -s localhost:5080/api/health
+curl.exe -s "localhost:5080/api/health?check=true"   # every configured provider/key: ok, failed (why) or skipped
 curl.exe -s localhost:5080/api/quote/AAPL
 curl.exe -s "localhost:5080/api/history/AAPL?range=1D"
 curl.exe -s localhost:5080/api/profile/MSFT
@@ -57,6 +58,9 @@ curl.exe -s localhost:5080/api/yieldcurve
 curl.exe -s localhost:5080/api/fx
 curl.exe -s localhost:5080/api/crypto
 curl.exe -s localhost:5080/api/eco                 # configured=false with a note when there's no FRED key
+curl.exe -s localhost:5080/api/topnews             # headlines; "failed" lists feeds that didn't answer
+curl.exe -s "localhost:5080/api/screener?sector=Energy&limit=5"   # first call after a fresh DB builds the snapshot (~3 s)
+curl.exe -s localhost:5080/api/layouts             # needs LocalDB; don't leave test layouts behind
 ```
 Check for any new endpoint as well. A 502 means the provider failed. Yahoo may be rate-limiting, or its crumb flow
 may have changed (see CLAUDE.md). A 503 on watchlists means the database is unreachable: run

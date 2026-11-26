@@ -13,6 +13,9 @@ namespace Stodash.Api.Infrastructure;
 public interface IMarketCache
 {
     Task<T> GetOrLoadAsync<T>(string key, TimeSpan ttl, Func<Task<T>> load, bool durable = false);
+
+    /// <summary>Stores (or replaces) a value, e.g. one rebuilt in the background. Only call it with good data.</summary>
+    Task SetAsync<T>(string key, T value, TimeSpan ttl, bool durable = false);
 }
 
 public sealed class MarketCache(
@@ -41,6 +44,12 @@ public sealed class MarketCache(
         memory.Set(key, value, ttl);
         if (durable) await WriteAsync(key, value, DateTimeOffset.UtcNow + ttl);
         return value;
+    }
+
+    public async Task SetAsync<T>(string key, T value, TimeSpan ttl, bool durable = false)
+    {
+        memory.Set(key, value, ttl);
+        if (durable) await WriteAsync(key, value, DateTimeOffset.UtcNow + ttl);
     }
 
     private bool DbAvailable => DateTimeOffset.UtcNow >= _skipDbUntil;

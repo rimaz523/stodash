@@ -17,7 +17,7 @@ export function Brand() {
         <rect width="32" height="32" rx="7" fill="#131923" stroke="#2a3444" />
         <path d="M6 22l6-7 5 4 9-10" fill="none" stroke="#5b8cff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      Stodash <small>phase 3</small>
+      Stodash <small>phase 4</small>
     </div>
   )
 }
@@ -58,6 +58,8 @@ export function StatusBar({ panelCount }: { panelCount: number }) {
         <span><span className="kbd">Enter</span>active panel</span>
         <span><span className="kbd">Shift Enter</span>new panel</span>
         <span><span className="kbd">Alt 1–4</span>switch panel</span>
+        <span><span className="kbd">Alt M</span>maximize</span>
+        <span><span className="kbd">?</span>help</span>
       </span>
     </footer>
   )
@@ -71,6 +73,8 @@ const NAMES: Record<ProviderName, string> = {
   treasury: 'Treasury',
   coingecko: 'CoinGecko',
   frankfurter: 'ECB',
+  rss: 'News feeds',
+  indexlist: 'S&P 500 list',
   database: 'Database',
 }
 

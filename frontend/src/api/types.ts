@@ -162,6 +162,16 @@ export interface NewsFeed {
   providers: string[]
 }
 
+/** TOP. Each item's `provider` names the feed it came from ("CNBC", "Finnhub", ...). */
+export interface TopNewsFeed {
+  items: NewsItem[]
+  /** Feeds that answered. */
+  providers: string[]
+  /** Feeds that failed this time. */
+  failed: string[]
+  asOf: string
+}
+
 export const FILING_CATEGORIES = ['annual', 'quarterly', 'current', 'proxy', 'insider', 'other'] as const
 export type FilingCategory = (typeof FILING_CATEGORIES)[number]
 
@@ -198,16 +208,25 @@ export interface ProviderStatus {
   lastError: string | null
 }
 
-export const PROVIDERS = ['yahoo', 'sec', 'finnhub', 'fred', 'treasury', 'coingecko', 'frankfurter', 'database'] as const
+export const PROVIDERS = ['yahoo', 'sec', 'finnhub', 'fred', 'treasury', 'coingecko', 'frankfurter', 'rss', 'indexlist', 'database'] as const
 export type ProviderName = (typeof PROVIDERS)[number]
 
 /** off (no Finnhub key), idle (no one watching), connecting, live or error. */
 export type StreamState = 'off' | 'idle' | 'connecting' | 'live' | 'error'
 
+/** One provider's test call from GET /api/health?check=true. */
+export interface ProviderCheck {
+  state: 'ok' | 'failed' | 'skipped'
+  ms: number | null
+  error: string | null
+}
+
 export interface Health {
   status: string
   providers: Record<ProviderName, ProviderStatus>
   stream: { state: StreamState; error: string | null }
+  /** Only with ?check=true; null otherwise. */
+  check?: Record<ProviderName, ProviderCheck> | null
 }
 
 // Mirrors backend/Stodash.Api/Models/WatchlistModels.cs
@@ -328,4 +347,72 @@ export interface CryptoBoard {
   coins: CryptoCoin[]
   source: string
   asOf: string
+}
+
+// Mirrors backend/Stodash.Api/Models/ScreenerModels.cs
+
+export interface ScreenerRow {
+  /** Yahoo's form: BRK-B. */
+  symbol: string
+  name: string
+  /** GICS sector. */
+  sector: string
+  industry: string | null
+  price: number | null
+  /** Already a percent: 1.25 means +1.25%. */
+  changePercent: number | null
+  marketCap: number | null
+  trailingPE: number | null
+  forwardPE: number | null
+  priceToBook: number | null
+  /** A fraction: 0.015 means 1.5%. */
+  dividendYield: number | null
+  fiftyTwoWeekHigh: number | null
+  fiftyTwoWeekLow: number | null
+  volume: number | null
+}
+
+export interface SectorCount {
+  sector: string
+  count: number
+}
+
+export const SCREENER_SORTS = ['symbol', 'name', 'sector', 'price', 'change', 'marketCap', 'pe', 'forwardPe', 'pb', 'yield', 'volume'] as const
+export type ScreenerSort = (typeof SCREENER_SORTS)[number]
+
+/** GET /api/screener's filters. Market caps in dollars, changes in percent. Missing means no limit. */
+export interface ScreenerQuery {
+  sector?: string
+  minCap?: number
+  maxCap?: number
+  minPe?: number
+  maxPe?: number
+  minChange?: number
+  maxChange?: number
+  sort?: ScreenerSort
+  desc?: boolean
+  limit?: number
+}
+
+export interface ScreenerResult {
+  universe: string
+  total: number
+  matched: number
+  rows: ScreenerRow[]
+  sectors: SectorCount[]
+  universeAsOf: string
+  pricesAsOf: string
+  /** Newer prices are being fetched in the background. */
+  refreshing: boolean
+  source: string
+}
+
+// Mirrors backend/Stodash.Api/Models/LayoutModels.cs
+
+/** A saved workspace. `workspace` is whatever the app saved; App validates it before loading. */
+export interface Layout {
+  id: number
+  name: string
+  workspace: unknown
+  updatedAt: string
 }

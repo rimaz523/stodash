@@ -78,6 +78,31 @@ public sealed class YahooClient : IDisposable
         }
     }
 
+    /// <summary>
+    /// Returns <c>quoteResponse.result</c> from the batch quote endpoint: one entry per known symbol (unknown ones are
+    /// left out) with price, change, market cap, P/E, P/B and dividend fields. At most 100 symbols per call. Needs the crumb.
+    /// </summary>
+    public async Task<JsonArray> GetQuotesAsync(IReadOnlyCollection<string> symbols, CancellationToken ct)
+    {
+        if (symbols.Count is 0 or > 100) throw new ArgumentException("Ask for 1 to 100 symbols at a time.");
+        var list = string.Join(',', symbols.Select(Uri.EscapeDataString));
+        for (var attempt = 0; ; attempt++)
+        {
+            var crumb = await GetCrumbAsync(forceRefresh: attempt > 0, ct);
+            var url = $"https://query1.finance.yahoo.com/v7/finance/quote?symbols={list}&crumb={Uri.EscapeDataString(crumb)}";
+            var (status, root) = await GetJsonAsync(url, ct);
+
+            if (status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden && attempt == 0)
+            {
+                _log.LogInformation("Yahoo rejected crumb ({Status}); refreshing.", (int)status);
+                continue;
+            }
+            if (status != HttpStatusCode.OK)
+                throw Fail($"Yahoo batch quotes returned {(int)status}.");
+            return root?["quoteResponse"]?["result"] as JsonArray ?? [];
+        }
+    }
+
     /// <summary>Returns the raw <c>quotes</c> array from Yahoo's symbol search.</summary>
     public async Task<JsonArray> SearchAsync(string query, int count, CancellationToken ct)
     {

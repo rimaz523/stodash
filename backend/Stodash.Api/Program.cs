@@ -57,6 +57,17 @@ builder.Services.AddHttpClient<CoinGeckoClient>(c =>
     c.DefaultRequestHeaders.UserAgent.ParseAdd("Stodash/1.0");
 });
 builder.Services.AddHttpClient<FrankfurterClient>(c => c.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddHttpClient<RssClient>(c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(10);
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible; Stodash/1.0)");
+    c.DefaultRequestHeaders.Accept.ParseAdd("application/rss+xml, application/atom+xml, application/xml, text/xml");
+}).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All });
+builder.Services.AddHttpClient<IndexListClient>(c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(20);
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("Stodash/1.0");
+});
 
 // One Finnhub WebSocket for the whole app, relayed to browsers at /ws/quotes.
 builder.Services.AddSingleton<QuoteStream>();
@@ -72,6 +83,13 @@ builder.Services.AddScoped<EcoService>();
 builder.Services.AddScoped<YieldCurveService>();
 builder.Services.AddScoped<FxService>();
 builder.Services.AddScoped<CryptoService>();
+builder.Services.AddScoped<HealthCheckService>();
+builder.Services.AddScoped<TopNewsService>();
+builder.Services.AddScoped<LayoutService>();
+
+// EQS keeps one snapshot of the S&P 500 for everyone, rebuilt in the background (see ScreenerService).
+builder.Services.AddSingleton<ScreenerService>();
+builder.Services.AddHostedService<ScreenerRefresher>();
 
 // The Vite dev server proxies /api, so CORS only matters if the frontend is opened another way.
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p
@@ -110,5 +128,6 @@ if (app.Environment.IsDevelopment())
 app.MapMarketEndpoints();
 app.MapWatchlistEndpoints();
 app.MapMacroEndpoints();
+app.MapLayoutEndpoints();
 
 app.Run();

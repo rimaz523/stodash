@@ -26,6 +26,10 @@ public sealed class ProviderHealth
     public const string Treasury = "treasury";
     public const string CoinGecko = "coingecko";
     public const string Frankfurter = "frankfurter";
+    /// <summary>The headline RSS feeds behind TOP, as a group: up while at least one feed answers.</summary>
+    public const string Rss = "rss";
+    /// <summary>The S&amp;P 500 constituent list behind EQS.</summary>
+    public const string IndexList = "indexlist";
     public const string Database = "database";
 
     private sealed record Entry(DateTimeOffset? LastOk, DateTimeOffset? LastFailure, string? LastError);

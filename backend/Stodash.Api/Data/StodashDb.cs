@@ -26,6 +26,23 @@ public sealed class WatchlistItem
     public DateTimeOffset AddedAt { get; set; }
 }
 
+/// <summary>A named workspace (panels, active panel, panel sizes) saved by one user, for LAYOUT.</summary>
+public sealed class SavedLayout
+{
+    public int Id { get; set; }
+
+    /// <summary>Who owns the layout; see <see cref="Watchlist.UserId"/>.</summary>
+    public required string UserId { get; set; }
+
+    public required string Name { get; set; }
+
+    /// <summary>The frontend's workspace JSON, stored as is.</summary>
+    public required string WorkspaceJson { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
 /// <summary>One cached API result, serialized as JSON. Lets slow-changing data survive API restarts.</summary>
 public sealed class CacheEntry
 {
@@ -46,6 +63,7 @@ public sealed class StodashDb(DbContextOptions<StodashDb> options) : DbContext(o
     public DbSet<Watchlist> Watchlists => Set<Watchlist>();
     public DbSet<WatchlistItem> WatchlistItems => Set<WatchlistItem>();
     public DbSet<CacheEntry> CacheEntries => Set<CacheEntry>();
+    public DbSet<SavedLayout> Layouts => Set<SavedLayout>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -68,6 +86,14 @@ public sealed class StodashDb(DbContextOptions<StodashDb> options) : DbContext(o
             e.HasKey(c => c.Key);
             e.Property(c => c.Key).HasMaxLength(200);
             e.HasIndex(c => c.ExpiresAt);
+        });
+
+        b.Entity<SavedLayout>(e =>
+        {
+            e.ToTable("SavedLayouts");
+            e.Property(l => l.UserId).HasMaxLength(128);
+            e.Property(l => l.Name).HasMaxLength(MaxNameLength);
+            e.HasIndex(l => new { l.UserId, l.Name }).IsUnique();
         });
     }
 }

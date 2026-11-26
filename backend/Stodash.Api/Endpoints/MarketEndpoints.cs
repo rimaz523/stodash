@@ -10,24 +10,35 @@ public static class MarketEndpoints
     {
         var api = app.MapGroup("/api").WithTags("Market");
 
-        api.MapGet("/health", (ProviderHealth health, FinnhubClient finnhub, SecClient sec, FredClient fred, QuoteStream stream) => new
+        api.MapGet("/health", async (bool? check, ProviderHealth health, FinnhubClient finnhub, SecClient sec, FredClient fred,
+                QuoteStream stream, HealthCheckService checker, CancellationToken ct) =>
             {
-                status = "ok",
-                providers = new
+                // With ?check=true, first call every configured provider once, so the states below are fresh.
+                var checks = check == true ? await checker.RunAsync(ct) : null;
+                return new
                 {
-                    yahoo = health.Status(ProviderHealth.Yahoo, configured: true),
-                    sec = health.Status(ProviderHealth.Sec, sec.IsConfigured),
-                    finnhub = health.Status(ProviderHealth.Finnhub, finnhub.IsConfigured),
-                    fred = health.Status(ProviderHealth.Fred, fred.IsConfigured),
-                    treasury = health.Status(ProviderHealth.Treasury, configured: true),
-                    coingecko = health.Status(ProviderHealth.CoinGecko, configured: true),
-                    frankfurter = health.Status(ProviderHealth.Frankfurter, configured: true),
-                    database = health.Status(ProviderHealth.Database, configured: true),
-                },
-                // The live watchlist stream: off (no Finnhub key), idle (no one watching), connecting, live or error.
-                stream = new { state = stream.State, error = stream.State == "error" ? stream.LastError : null },
+                    status = "ok",
+                    providers = new
+                    {
+                        yahoo = health.Status(ProviderHealth.Yahoo, configured: true),
+                        sec = health.Status(ProviderHealth.Sec, sec.IsConfigured),
+                        finnhub = health.Status(ProviderHealth.Finnhub, finnhub.IsConfigured),
+                        fred = health.Status(ProviderHealth.Fred, fred.IsConfigured),
+                        treasury = health.Status(ProviderHealth.Treasury, configured: true),
+                        coingecko = health.Status(ProviderHealth.CoinGecko, configured: true),
+                        frankfurter = health.Status(ProviderHealth.Frankfurter, configured: true),
+                        rss = health.Status(ProviderHealth.Rss, configured: true),
+                        indexlist = health.Status(ProviderHealth.IndexList, configured: true),
+                        database = health.Status(ProviderHealth.Database, configured: true),
+                    },
+                    // The live watchlist stream: off (no Finnhub key), idle (no one watching), connecting, live or error.
+                    stream = new { state = stream.State, error = stream.State == "error" ? stream.LastError : null },
+                    // Only with ?check=true: each provider's test call (ok, failed or skipped), with timing and error.
+                    check = checks,
+                };
             })
-            .WithSummary("API status, plus each provider's configuration and the outcome of its most recent call.");
+            .WithSummary("API status and each provider's configuration and last outcome. Add ?check=true to test every " +
+                         "configured provider and key with one small call each (repeats within 30 s reuse the result).");
 
         api.MapGet("/quote/{symbol}", (string symbol, MarketDataService data, CancellationToken ct) =>
                 data.GetQuoteAsync(symbol, ct))

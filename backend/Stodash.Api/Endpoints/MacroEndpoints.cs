@@ -1,8 +1,9 @@
+using Stodash.Api.Models;
 using Stodash.Api.Services;
 
 namespace Stodash.Api.Endpoints;
 
-/// <summary>Market-wide functions (ECO, YC, FX, CRYPTO) under /api, plus the live quote stream at /ws/quotes.</summary>
+/// <summary>Market-wide functions (ECO, YC, FX, CRYPTO, TOP, EQS) under /api, plus the live quote stream at /ws/quotes.</summary>
 public static class MacroEndpoints
 {
     public static IEndpointRouteBuilder MapMacroEndpoints(this IEndpointRouteBuilder app)
@@ -23,6 +24,16 @@ public static class MacroEndpoints
 
         api.MapGet("/crypto", (CryptoService svc, CancellationToken ct) => svc.GetAsync(ct))
             .WithSummary($"CRYPTO: top {CryptoService.Count} coins by market cap.");
+
+        api.MapGet("/topnews", (TopNewsService svc, CancellationToken ct) => svc.GetAsync(ct))
+            .WithSummary("TOP: market headlines from CNBC, MarketWatch, Yahoo Finance and Investing.com RSS, plus Finnhub " +
+                         "general news when a key is set. Feeds that fail are listed in 'failed'.");
+
+        api.MapGet("/screener", ([AsParameters] ScreenerQuery query, ScreenerService svc, CancellationToken ct) =>
+                svc.ScreenAsync(query, ct))
+            .WithSummary("EQS: screen the S&P 500. Filters: sector, minCap/maxCap (dollars), minPe/maxPe, minChange/maxChange " +
+                         $"(percent). sort = {string.Join(" | ", ScreenerService.SortKeys.Keys)}; desc; limit (default " +
+                         $"{ScreenerService.DefaultLimit}, max {ScreenerService.MaxLimit}).");
 
         // Browsers connect here for live watchlist prices; see QuoteStream for the message format.
         app.Map("/ws/quotes", async (HttpContext ctx, QuoteStream stream) =>

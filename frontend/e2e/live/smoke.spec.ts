@@ -63,4 +63,33 @@ test.describe('live backend', () => {
     await open(page, 'ECO')
     await expect(panelFor(page, 'ECO').locator('.eco-tile, code.setup').first()).toBeVisible({ timeout: 20_000 })
   })
+
+  test('TOP shows market headlines', async ({ page }) => {
+    await open(page, 'TOP')
+    await expect(panelFor(page, 'TOP').locator('.news-list > li').first()).toBeVisible({ timeout: 20_000 })
+  })
+
+  test('EQS screens the S&P 500', async ({ page }) => {
+    await open(page, 'EQS')
+    const eqs = panelFor(page, 'EQS')
+    // The first screen after a fresh database builds the snapshot (about 6 provider calls).
+    await expect(eqs.locator('.eqs-summary')).toContainText(/of 5\d\d match/, { timeout: 45_000 })
+    await eqs.getByRole('combobox').selectOption('Energy')
+    await expect(eqs.locator('.eqs-summary')).toContainText(/^\d{1,2} of 5\d\d match/, { timeout: 20_000 })
+  })
+
+  test('LAYOUT saves and loads through the database (needs LocalDB)', async ({ page }) => {
+    const name = `e2e smoke ${Date.now()}`
+    await open(page, 'AAPL DES')
+    const input = page.getByRole('combobox', { name: 'Command' })
+    await input.fill(`LAYOUT SAVE ${name}`)
+    await input.press('Enter')
+    await expect(page.locator('.toast')).toHaveText(`Saved layout "${name}".`, { timeout: 15_000 })
+    await input.fill(`LAYOUT ${name}`)
+    await input.press('Enter')
+    await expect(page.locator('.toast')).toHaveText(`Loaded layout "${name}".`, { timeout: 15_000 })
+    await input.fill(`LAYOUT DEL ${name}`)
+    await input.press('Enter')
+    await expect(page.locator('.toast')).toHaveText(`Deleted layout "${name}".`, { timeout: 15_000 })
+  })
 })

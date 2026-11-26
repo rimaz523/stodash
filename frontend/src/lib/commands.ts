@@ -17,6 +17,9 @@ export const GLOBAL_COMMANDS = {
   YC: { label: 'Yield Curve', hint: 'US Treasury curve: now, a month ago, a year ago' },
   FX: { label: 'Currencies', hint: 'Major pairs against USD and cross rates' },
   CRYPTO: { label: 'Crypto', hint: 'Top 25 coins by market cap' },
+  TOP: { label: 'Top News', hint: 'Market headlines from CNBC, MarketWatch, Yahoo, Investing.com and Finnhub' },
+  EQS: { label: 'Screener', hint: 'Screen the S&P 500 by sector, market cap, P/E and % change' },
+  LAYOUT: { label: 'Layouts', hint: 'Saved workspaces · LAYOUT SAVE Morning · LAYOUT Morning loads it' },
   HELP: { label: 'Help', hint: 'Commands and keyboard shortcuts' },
   CLEAR: { label: 'Clear', hint: 'Close all panels' },
 } as const
@@ -37,13 +40,16 @@ export const ECO_INDICATORS: Record<string, string[]> = {
 
 export type ParsedCommand =
   | { kind: 'function'; symbol: string; fn: FunctionCode; range?: Range; period?: Period }
-  | { kind: 'global'; command: Exclude<GlobalCommand, 'W' | 'ECO'> }
+  | { kind: 'global'; command: Exclude<GlobalCommand, 'W' | 'ECO' | 'LAYOUT'> }
   /** W, or W <list name> */
   | { kind: 'watchlist'; list?: string }
   /** W ADD NVDA [TO] [list], W DEL NVDA [FROM] [list] */
   | { kind: 'watchlist-edit'; action: 'add' | 'remove'; symbol: string; list?: string }
   /** ECO, or ECO CPI */
   | { kind: 'eco'; indicator?: string }
+  /** LAYOUT (the manager), LAYOUT SAVE name, LAYOUT [LOAD] name, LAYOUT DEL name */
+  | { kind: 'layout'; action: 'manage' }
+  | { kind: 'layout'; action: 'save' | 'load' | 'delete'; name: string }
   | { kind: 'error'; message: string }
 
 // Bloomberg-style "market sector" words people type out of habit: "AAPL US EQUITY GP".
@@ -51,6 +57,8 @@ const IGNORED_WORDS = new Set(['US', 'EQUITY', 'EQ', 'INDEX', 'CURNCY', 'COMDTY'
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.\-=^]{0,19}$/
 const ADD_WORDS = new Set(['ADD', '+'])
 const REMOVE_WORDS = new Set(['DEL', 'DELETE', 'REMOVE', 'RM', '-'])
+const SAVE_WORDS = new Set(['SAVE', 'AS'])
+const LOAD_WORDS = new Set(['LOAD', 'OPEN'])
 
 export function isFunction(s: string): s is FunctionCode {
   return s in FUNCTIONS
@@ -82,6 +90,7 @@ const PERIOD_WORDS: Record<string, Period> = { A: 'annual', ANNUAL: 'annual', Q:
  * "w", "w tech"        → watchlists (the "tech" list)
  * "w add nvda to tech" → add NVDA to the "tech" list
  * "eco", "eco cpi"     → economy dashboard (CPI detail)
+ * "layout save am"     → save the workspace as "am"; "layout am" loads it
  * "w des", "w gp"      → Wayfair (ticker W): a function after a command word means it's a ticker
  */
 export function parseCommand(input: string): ParsedCommand | null {
@@ -147,6 +156,18 @@ function parseGlobal(cmd: GlobalCommand, rest: string[], rawRest: string[]): Par
       if (!id || rest.length > 1)
         return { kind: 'error', message: `Unknown indicator "${rest.join(' ')}". Use ${Object.keys(ECO_INDICATORS).join(', ')}.` }
       return { kind: 'eco', indicator: id }
+    }
+    case 'LAYOUT': {
+      if (rest.length === 0) return { kind: 'layout', action: 'manage' }
+      const verb = rest[0]
+      const action = SAVE_WORDS.has(verb) ? 'save' : LOAD_WORDS.has(verb) ? 'load' : REMOVE_WORDS.has(verb) ? 'delete' : null
+      // Without a verb, the words are the name of a layout to load: "LAYOUT Morning".
+      const name = (action ? rawRest.slice(1) : rawRest).join(' ')
+      if (!name) {
+        const example = action === 'save' ? 'LAYOUT SAVE Morning' : action === 'delete' ? 'LAYOUT DEL Morning' : 'LAYOUT Morning'
+        return { kind: 'error', message: `Which layout? e.g. ${example}` }
+      }
+      return { kind: 'layout', action: action ?? 'load', name }
     }
     case 'HELP':
     case 'CLEAR':

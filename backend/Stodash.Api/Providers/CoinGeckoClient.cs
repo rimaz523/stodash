@@ -17,6 +17,14 @@ public sealed class CoinGeckoClient(HttpClient http, IOptions<CoinGeckoOptions> 
 {
     private readonly string? _key = options.Value.ApiKey?.Trim();
 
+    /// <summary>CoinGecko's cheapest call: checks that the API answers (and that a demo key, if set, is accepted).</summary>
+    public async Task PingAsync(CancellationToken ct)
+    {
+        var (status, _) = await ProviderHttp.GetAsync(http, "https://api.coingecko.com/api/v3/ping", ProviderHealth.CoinGecko,
+            "CoinGecko", health, ct, req => { if (!string.IsNullOrWhiteSpace(_key)) req.Headers.Add("x-cg-demo-api-key", _key); });
+        if (status != HttpStatusCode.OK) throw new UpstreamException($"CoinGecko returned {(int)status}.");
+    }
+
     /// <summary>The raw <c>coins/markets</c> array, with 7-day sparklines and 24h/7d % changes.</summary>
     public async Task<JsonArray> GetMarketsAsync(int count, CancellationToken ct)
     {

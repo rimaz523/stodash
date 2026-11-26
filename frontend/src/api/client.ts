@@ -8,12 +8,16 @@ import type {
   FilingList,
   FinancialStatements,
   Health,
+  Layout,
   NewsFeed,
   Period,
   PriceHistory,
   Quote,
   Range,
+  ScreenerQuery,
+  ScreenerResult,
   SearchResult,
+  TopNewsFeed,
   Watchlist,
   YieldCurve,
 } from './types'
@@ -96,4 +100,20 @@ export const api = {
   yieldCurve: (signal?: AbortSignal) => get<YieldCurve>('/api/yieldcurve', signal),
   fx: (signal?: AbortSignal) => get<FxBoard>('/api/fx', signal),
   crypto: (signal?: AbortSignal) => get<CryptoBoard>('/api/crypto', signal),
+  topNews: (signal?: AbortSignal) => get<TopNewsFeed>('/api/topnews', signal),
+  screener: (query: ScreenerQuery, signal?: AbortSignal) => get<ScreenerResult>(`/api/screener${queryString(query)}`, signal),
+
+  layouts: (signal?: AbortSignal) => get<Layout[]>('/api/layouts', signal),
+  createLayout: (name: string, workspace: unknown) => request<Layout>('POST', '/api/layouts', { name, workspace }),
+  updateLayout: (id: number, change: { name?: string; workspace?: unknown }) =>
+    request<Layout>('PATCH', `/api/layouts/${id}`, change),
+  deleteLayout: (id: number) => request<void>('DELETE', `/api/layouts/${id}`),
+}
+
+/** "?a=1&b=x" from the defined values in `params`, or "" when there are none. */
+export function queryString(params: object): string {
+  const parts = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== null && v !== '' && !(typeof v === 'number' && !Number.isFinite(v)))
+    .map(([k, v]) => `${enc(k)}=${enc(String(v))}`)
+  return parts.length ? `?${parts.join('&')}` : ''
 }

@@ -11,14 +11,18 @@ import type {
   FinancialStatements,
   FxBoard,
   Health,
+  Layout,
   NewsFeed,
   PriceHistory,
   ProviderName,
   ProviderStatus,
   Quote,
+  ScreenerResult,
+  ScreenerRow,
   SearchResult,
   StatementRow,
   StreamState,
+  TopNewsFeed,
   Watchlist,
   YieldCurve,
 } from '../src/api/types.ts'
@@ -281,6 +285,8 @@ export function health(
     treasury: 'up',
     coingecko: 'up',
     frankfurter: 'unknown',
+    rss: 'up',
+    indexlist: 'up',
     database: 'up',
   }
   const providers = Object.fromEntries(
@@ -406,6 +412,89 @@ export function crypto(): CryptoBoard {
   }
 }
 
+// ------------------------------------------------------------- TOP and EQS
+
+export function topNews(): TopNewsFeed {
+  const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
+  const item = (headline: string, provider: string, minutes: number, source = provider, tickers: string[] = []) => ({
+    headline, provider, source, tickers, published: ago(minutes), summary: null as string | null,
+    url: `https://example.com/top/${headline.toLowerCase().replace(/[^a-z]+/g, '-')}`,
+  })
+  return {
+    providers: ['CNBC', 'MarketWatch', 'Finnhub'],
+    failed: [],
+    asOf: ago(0),
+    items: [
+      item('Stocks rally as yields ease', 'CNBC', 10),
+      { ...item('Fed minutes point to patience', 'Finnhub', 40, 'Reuters', ['SPY']), summary: 'Officials saw no rush to cut.' },
+      item('Oil slides on supply worries', 'MarketWatch', 95),
+      item('Chipmakers lead the Nasdaq higher', 'CNBC', 180),
+    ],
+  }
+}
+
+/** symbol, name, sector, price, change %, market cap, trailing P/E (null: losses), yield (fraction) */
+const SCREEN: [string, string, string, number, number, number, number | null, number | null][] = [
+  ['AAPL', 'Apple Inc.', 'Information Technology', 355.58, 0.43, 5.17e12, 39.6, 0.003],
+  ['MSFT', 'Microsoft', 'Information Technology', 489.93, -1.25, 3.64e12, 25.6, 0.008],
+  ['NVDA', 'Nvidia', 'Information Technology', 149.3, -3.91, 3.61e12, 16.0, 0.0067],
+  ['JPM', 'JPMorgan Chase', 'Financials', 316.74, -0.11, 8.7e11, 15.2, 0.019],
+  ['XOM', 'ExxonMobil', 'Energy', 118.2, 2.6, 5.1e11, 13.4, 0.034],
+  ['DVN', 'Devon Energy', 'Energy', 36.1, 2.71, 2.3e10, 10.0, 0.041],
+  ['INTC', 'Intel', 'Information Technology', 21.4, 3.2, 9.3e10, null, null],
+  ['BRK-B', 'Berkshire Hathaway', 'Financials', 512.0, 0.2, 1.1e12, 22.1, null],
+]
+
+export const SCREEN_ROWS: ScreenerRow[] = SCREEN.map(([symbol, name, sector, price, chg, cap, pe, dy]) => ({
+  symbol, name, sector, industry: null, price, changePercent: chg, marketCap: cap, trailingPE: pe,
+  forwardPE: pe === null ? null : pe * 0.85, priceToBook: 4.2, dividendYield: dy,
+  fiftyTwoWeekHigh: price * 1.2, fiftyTwoWeekLow: price * 0.7, volume: 1_000_000,
+}))
+
+const SORT_FIELDS: Record<string, keyof ScreenerRow> = {
+  symbol: 'symbol', name: 'name', sector: 'sector', price: 'price', change: 'changePercent', marketCap: 'marketCap',
+  pe: 'trailingPE', forwardPe: 'forwardPE', pb: 'priceToBook', yield: 'dividendYield', volume: 'volume',
+}
+
+/** ScreenerService's filtering and sorting, over SCREEN_ROWS. */
+export function screener(params: URLSearchParams): Reply {
+  const num = (k: string) => (params.has(k) ? Number(params.get(k)) : undefined)
+  const inRange = (v: number | null, min?: number, max?: number) =>
+    (min === undefined && max === undefined) || (v !== null && (min === undefined || v >= min) && (max === undefined || v <= max))
+  const sector = params.get('sector') ?? undefined
+  const sortKey = params.get('sort') ?? 'marketCap'
+  const field = SORT_FIELDS[sortKey]
+  if (!field) return problem(400, 'Invalid request', `Unknown sort '${sortKey}'.`)
+  if (sector && !SCREEN_ROWS.some((r) => r.sector === sector)) return problem(400, 'Invalid request', `Unknown sector '${sector}'.`)
+  const desc = params.has('desc') ? params.get('desc') === 'true' : !['symbol', 'name', 'sector'].includes(sortKey)
+
+  const matches = SCREEN_ROWS.filter(
+    (r) =>
+      (!sector || r.sector === sector) &&
+      inRange(r.marketCap, num('minCap'), num('maxCap')) &&
+      inRange(r.trailingPE, num('minPe'), num('maxPe')) &&
+      inRange(r.changePercent, num('minChange'), num('maxChange')),
+  )
+  const value = (r: ScreenerRow) => r[field] as string | number | null
+  const sorted = matches
+    .filter((r) => value(r) !== null)
+    .sort((a, b) => {
+      const av = value(a)!
+      const bv = value(b)!
+      return (av < bv ? -1 : av > bv ? 1 : 0) * (desc ? -1 : 1)
+    })
+    .concat(matches.filter((r) => value(r) === null))
+  const sectors = [...new Set(SCREEN_ROWS.map((r) => r.sector))].sort()
+  const body: ScreenerResult = {
+    universe: 'S&P 500', total: SCREEN_ROWS.length, matched: matches.length,
+    rows: sorted.slice(0, num('limit') ?? 100),
+    sectors: sectors.map((s) => ({ sector: s, count: SCREEN_ROWS.filter((r) => r.sector === s).length })),
+    universeAsOf: '2026-11-26T04:00:00Z', pricesAsOf: '2026-11-26T15:30:00Z', refreshing: false,
+    source: 'S&P 500 list: github.com/datasets (from Wikipedia) · prices: Yahoo',
+  }
+  return ok(body)
+}
+
 // ------------------------------------------------------------------ routing
 
 export type Reply = { status: number; body: unknown } | 'abort'
@@ -427,6 +516,8 @@ export class MockApi {
   streamState: StreamState = 'live'
   /** Whether ECO has a FRED key. */
   ecoConfigured = true
+  /** The fake user's saved layouts (LAYOUT). Tests can read or replace them. */
+  layouts: Layout[] = []
   private readonly overrides: [RegExp, Reply | ((url: URL) => Reply)][] = []
   private readonly sockets = new Set<{ ws: WebSocketRoute; symbols: string[] }>()
   private nextId = 2
@@ -528,9 +619,59 @@ export class MockApi {
         return ok(fx())
       case 'crypto':
         return ok(crypto())
+      case 'topnews':
+        return ok(topNews())
+      case 'screener':
+        return screener(url.searchParams)
+      case 'layouts':
+        return this.layoutReply(parts[1], method, body)
       default:
         return { status: 500, body: { title: `The mock API has no route for ${url.pathname}` } }
     }
+  }
+
+  /** A small in-memory version of LayoutService, with the same rules and messages. */
+  private layoutReply(idPart: string | undefined, method: string, body: Record<string, unknown>): Reply {
+    const name = typeof body.name === 'string' ? body.name.trim() : undefined
+    const taken = (n: string, except?: number) =>
+      this.layouts.some((l) => l.id !== except && l.name.toLowerCase() === n.toLowerCase())
+    const checkWorkspace = (w: unknown) => {
+      const panels = (w as { panels?: unknown })?.panels
+      if (!Array.isArray(panels)) return 'The workspace must be an object with a "panels" array.'
+      if (panels.length === 0) return 'Open at least one panel before saving a layout.'
+      return null
+    }
+    const stamp = () => new Date().toISOString()
+
+    if (!idPart) {
+      if (method === 'GET') return ok([...this.layouts].sort((a, b) => a.name.localeCompare(b.name)))
+      if (!name) return problem(400, 'Invalid request', 'Give the layout a name.')
+      const bad = checkWorkspace(body.workspace)
+      if (bad) return problem(400, 'Invalid request', bad)
+      if (taken(name)) return problem(409, 'Conflict', `You already have a layout called "${name}".`)
+      const created: Layout = { id: this.nextId++, name, workspace: body.workspace, updatedAt: stamp() }
+      this.layouts.push(created)
+      return { status: 201, body: created }
+    }
+
+    const layout = this.layouts.find((l) => l.id === Number(idPart))
+    if (!layout) return problem(404, 'Not found', `Layout ${idPart} doesn't exist.`)
+    if (method === 'DELETE') {
+      this.layouts = this.layouts.filter((l) => l.id !== layout.id)
+      return { status: 204, body: null }
+    }
+    if (method === 'PATCH') {
+      if (name !== undefined && !name) return problem(400, 'Invalid request', 'Give the layout a name.')
+      if (name && taken(name, layout.id)) return problem(409, 'Conflict', `You already have a layout called "${name}".`)
+      if (body.workspace !== undefined) {
+        const bad = checkWorkspace(body.workspace)
+        if (bad) return problem(400, 'Invalid request', bad)
+      }
+      const updated: Layout = { ...layout, name: name ?? layout.name, workspace: body.workspace ?? layout.workspace, updatedAt: stamp() }
+      this.layouts = this.layouts.map((l) => (l.id === layout.id ? updated : l))
+      return ok(updated)
+    }
+    return { status: 500, body: { title: `The mock API has no layout route for ${method} ${idPart}` } }
   }
 
   /** A small in-memory version of WatchlistService, with the same rules and messages. */

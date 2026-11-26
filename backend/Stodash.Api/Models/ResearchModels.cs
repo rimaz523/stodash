@@ -47,6 +47,20 @@ public sealed record NewsItem(
 
 public sealed record NewsFeed(string Symbol, IReadOnlyList<NewsItem> Items, IReadOnlyList<string> Providers);
 
+// ------------------------------------------------------------------------ TOP
+
+/// <summary>
+/// Market headlines from several RSS feeds plus Finnhub's general news. Each item's <see cref="NewsItem.Provider"/> names
+/// the feed it came from ("CNBC", "Finnhub", ...), which the panel filters on.
+/// </summary>
+public sealed record TopNewsFeed(
+    IReadOnlyList<NewsItem> Items,
+    /// <summary>Feeds that answered.</summary>
+    IReadOnlyList<string> Providers,
+    /// <summary>Feeds that failed this time. Their headlines are missing until they answer again.</summary>
+    IReadOnlyList<string> Failed,
+    DateTimeOffset AsOf);
+
 // ------------------------------------------------------------------------- CF
 
 public sealed record Filing(

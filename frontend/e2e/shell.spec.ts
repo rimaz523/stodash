@@ -15,9 +15,9 @@ test.describe('app shell', () => {
 
     const status = page.locator('footer.statusbar')
     await expect(status).toContainText('API connected')
-    // 8 providers, Finnhub not configured: 7 counted, all fine. Hovering lists each one.
+    // 10 providers, Finnhub not configured: 9 counted, all fine. Hovering lists each one.
     const summary = status.locator('.provider-summary')
-    await expect(summary).toHaveText(/7\/7 ok/)
+    await expect(summary).toHaveText(/9\/9 ok/)
     await expect(summary).toHaveAttribute('title', /Yahoo: working/)
     await expect(summary).toHaveAttribute('title', /Finnhub: not configured/)
     await expect(status.locator('.provider.down')).toHaveCount(0)
@@ -33,7 +33,7 @@ test.describe('app shell', () => {
     const sec = page.locator('.provider.down', { hasText: 'SEC failing' })
     await expect(sec).toBeVisible()
     await expect(sec).toHaveAttribute('title', /SEC EDGAR timed out/)
-    await expect(page.locator('.provider-summary')).toHaveText(/7\/8 ok/)
+    await expect(page.locator('.provider-summary')).toHaveText(/9\/10 ok/)
     await expect(page.locator('.provider-summary')).toHaveClass(/down/)
     await expect(page.locator('.provider.live')).toHaveText(/Live/) // the watchlist stream is up
   })

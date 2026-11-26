@@ -48,7 +48,7 @@ public sealed class NewsService(
 
             var merged = items
                 .OrderByDescending(i => i.Published)
-                .DistinctBy(i => Normalize(i.Headline))
+                .DistinctBy(i => NewsText.Key(i.Headline))
                 .DistinctBy(i => i.Url)
                 .Take(MaxItems)
                 .ToList();
@@ -65,7 +65,7 @@ public sealed class NewsService(
         return news
             .Select(n =>
             {
-                if (J.Str(n, "title") is not { } title || SafeUrl(J.Str(n, "link")) is not { } url ||
+                if (J.Str(n, "title") is not { } title || NewsText.SafeUrl(J.Str(n, "link")) is not { } url ||
                     J.Long(n, "providerPublishTime") is not { } time)
                     return null;
                 var tickers = (n?["relatedTickers"] as JsonArray ?? [])
@@ -87,7 +87,7 @@ public sealed class NewsService(
         return news
             .Select(n =>
             {
-                if (J.Str(n, "headline") is not { } headline || SafeUrl(J.Str(n, "url")) is not { } url ||
+                if (J.Str(n, "headline") is not { } headline || NewsText.SafeUrl(J.Str(n, "url")) is not { } url ||
                     J.Long(n, "datetime") is not { } time || time <= 0)
                     return null;
                 var related = (J.Str(n, "related") ?? symbol)
@@ -98,13 +98,4 @@ public sealed class NewsService(
             .OfType<NewsItem>()
             .ToList();
     }
-
-    /// <summary>Only absolute http(s) links reach the browser, never javascript: or relative ones.</summary>
-    private static string? SafeUrl(string? raw) =>
-        Uri.TryCreate(raw, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp)
-            ? uri.AbsoluteUri
-            : null;
-
-    private static string Normalize(string headline) =>
-        new string(headline.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
 }

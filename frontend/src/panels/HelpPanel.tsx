@@ -20,6 +20,12 @@ const COMMANDS: [string, string][] = [
   ['YC', 'US Treasury yield curve: now, a month ago, a year ago'],
   ['FX', 'Major currency pairs against USD and a cross-rate matrix'],
   ['CRYPTO', 'Top 25 coins by market cap, sortable'],
+  ['TOP', 'Top market headlines from CNBC, MarketWatch, Yahoo, Investing.com (and Finnhub with a key)'],
+  ['EQS', 'Screen the S&P 500 by sector, market cap, P/E and % change; click a row for DES'],
+  ['LAYOUT', 'Saved layouts: save, load, update, rename and delete named workspaces'],
+  ['LAYOUT SAVE Morning', 'Save the open panels (and their sizes) as "Morning"; saving again replaces it'],
+  ['LAYOUT Morning', 'Load the layout called Morning (also LAYOUT LOAD Morning)'],
+  ['LAYOUT DEL Morning', 'Delete a saved layout'],
   ['MSFT US EQUITY GP', 'Bloomberg-style words like US and EQUITY are ignored'],
   ['HELP', 'This panel'],
   ['CLEAR', 'Close every panel'],
@@ -41,6 +47,14 @@ const KEYS: [string, string][] = [
   ['Tab', 'Complete the highlighted suggestion'],
   ['Esc', 'Close suggestions, then leave the command bar'],
   ['Alt 1–4', 'Make panel 1–4 active'],
+  ['Alt ,  Alt .', 'Previous / next panel'],
+  ['Alt M', 'Maximize the active panel, or restore it (or double-click its title bar)'],
+  ['Alt X', 'Close the active panel'],
+  ['Alt [  Alt ]', 'Move the active panel earlier / later in the layout'],
+  ['Alt L', 'Open saved layouts'],
+  ['Alt Shift 1–9', 'Load saved layout 1–9 (in LAYOUT order)'],
+  ['?', 'Open this help'],
+  ['Drag a gap', 'Resize panels; arrow keys on a focused divider, Enter or double-click evens it'],
 ]
 
 export function HelpPanel({ onRun, ...frame }: PanelProps & { onRun: (cmd: string) => void }) {
@@ -88,8 +102,8 @@ export function HelpPanel({ onRun, ...frame }: PanelProps & { onRun: (cmd: strin
         </table>
 
         <p>
-          Data from Yahoo Finance (usually delayed about 15 minutes), SEC EDGAR, FRED, the US Treasury, CoinGecko and
-          the ECB, plus Finnhub (live watchlist prices and news) when a key is set.
+          Data from Yahoo Finance (usually delayed about 15 minutes), SEC EDGAR, FRED, the US Treasury, CoinGecko,
+          the ECB, news RSS feeds and the open S&amp;P 500 constituent list, plus Finnhub (live watchlist prices and news) when a key is set.
           For personal research only.
         </p>
       </div>

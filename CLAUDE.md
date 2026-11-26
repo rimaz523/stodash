@@ -5,8 +5,9 @@ Stodash is a personal, keyboard-driven market terminal inspired by the Bloomberg
 data, because free provider terms forbid that. Azure hosting for the owner plus one or two signed-in people is planned
 for later (see the roadmap), so design user data (watchlists) with a `UserId`, but don't build hosting or sign-in until asked.
 
-**Status:** Phases 1–3 are done (command bar, `DES`, `GP`, `FA`, `N`, `CF`, `W` with live prices, `ECO`, `YC`,
-`FX`, `CRYPTO`, market strip, provider health, database cache). Phase 4 is next, but don't start it until the user asks. See @docs/ROADMAP.md for the phase plans and the decisions already made.
+**Status:** Phases 1–4 are done (command bar, `DES`, `GP`, `FA`, `N`, `CF`, `W` with live prices, `ECO`, `YC`,
+`FX`, `CRYPTO`, `TOP`, `EQS`, saved layouts, resizable panels, shortcuts, market strip, provider health, database
+cache). Phase 5 (polish) is next, but don't start it until the user asks. See @docs/ROADMAP.md for the phase plans and the decisions already made.
 
 ## Stack (chosen by the user; don't swap)
 
@@ -49,13 +50,13 @@ cd frontend; npx tsc -b; npx oxlint src; npx vite build
 Browser tests (Playwright, in `frontend/e2e`) must also pass:
 
 ```powershell
-cd frontend; npm run test:e2e        # 52 tests against a mocked API; no backend needed, ~15 s
-cd frontend; npm run test:e2e:live   # 8 smoke tests against the real API on :5080 (start it first)
+cd frontend; npm run test:e2e        # 81 tests against a mocked API; no backend needed, ~20 s
+cd frontend; npm run test:e2e:live   # 11 smoke tests against the real API on :5080 (start it first)
 ```
 
 The mocked suite runs its own Vite server on :5199 and answers every `/api` call from `e2e/mock-api.ts`, whose
 fixtures are typed with `src/api/types.ts`. When an API record changes, update the fixture too. The mock also fakes
-`/ws/quotes` (`mock.streamState`, `mock.pushTrades(...)`) and keeps watchlists in memory (`mock.watchlists`). There are no backend
+`/ws/quotes` (`mock.streamState`, `mock.pushTrades(...)`) and keeps watchlists and layouts in memory (`mock.watchlists`, `mock.layouts`). There are no backend
 unit tests yet. Also verify by curling the API and using the app in a browser; the `/verify-stodash` skill has the
 full checklist.
 
@@ -66,8 +67,9 @@ scripts/                       start/stop .ps1 + double-click .cmd wrappers
 backend/Stodash.Api/
   Program.cs                   DI, ProblemDetails, exception handler, CORS, OpenAPI (/openapi/v1.json in dev)
   Endpoints/                   MarketEndpoints (/api market + health), WatchlistEndpoints (/api/watchlists),
-                               MacroEndpoints (/api/eco, yieldcurve, fx, crypto + the /ws/quotes WebSocket)
-  Data/StodashDb.cs            EF Core context + entities: Watchlists, WatchlistItems, CacheEntries; Migrations/
+                               LayoutEndpoints (/api/layouts), MacroEndpoints (/api/eco, yieldcurve, fx, crypto,
+                               topnews, screener + the /ws/quotes WebSocket)
+  Data/StodashDb.cs            EF Core context + entities: Watchlists, WatchlistItems, SavedLayouts, CacheEntries; Migrations/
   Services/MarketDataService   Quotes, charts, profiles, search: symbol validation, provider choice,
                                fallbacks, JSON→model mapping, cached through IMarketCache
   Services/FinancialsService   FA: Yahoo fundamentals-timeseries, then SEC companyfacts; line defs + ratios
@@ -77,11 +79,18 @@ backend/Stodash.Api/
   Services/WatchlistService    W: named lists per ICurrentUser; seeds "Main" with the Magnificent 7; validates symbols
   Services/QuoteStream         Singleton BackgroundService: ONE Finnhub WebSocket, relayed to browsers at /ws/quotes
   Services/Eco|YieldCurve|Fx|CryptoService   ECO (FRED, YoY transforms), YC (Treasury CSV), FX (Yahoo + ECB), CRYPTO
+  Services/TopNewsService      TOP: RSS feeds + Finnhub general news, merged; NewsText (SafeUrl, dedupe key) shared with N
+  Services/ScreenerService     EQS: singleton S&P 500 snapshot (list + Yahoo batch quotes), filters/sorts it; refreshes
+                               in the background when >15 min old; ScreenerRefresher rebuilds it daily
+  Services/LayoutService       LAYOUT: saved workspaces per ICurrentUser; stores the frontend's JSON, checks its outline
+  Services/HealthCheckService  /api/health?check=true: one cheap call per configured provider, reused for 30 s
   Providers/YahooClient        Singleton. Unofficial Yahoo endpoints; owns cookie jar + "crumb" token
   Providers/FinnhubClient      Typed HttpClient. Optional, active only if Finnhub:ApiKey is set
   Providers/SecClient          Typed HttpClient. Needs Sec:UserAgent ("Stodash email") or SEC answers 403
   Providers/Fred|Treasury|CoinGecko|FrankfurterClient   Typed HttpClients over ProviderHttp.GetAsync (shared
                                error mapping + health). FRED needs Fred:ApiKey; the rest need no key
+  Providers/RssClient          RSS 2.0/Atom reader (DTDs ignored); health per feed as rss:<name>, the group as "rss"
+  Providers/IndexListClient    S&P 500 constituents CSV (GitHub datasets) + a small RFC 4180 parser
   Models/MarketModels.cs       Response records (camelCase JSON by default); ResearchModels.cs for FA/N/CF
   Infrastructure/ProviderHealth Singleton; clients record each call's success/failure for /api/health
   Infrastructure/MarketCache   IMarketCache: memory, plus the CacheEntries table for `durable: true` results
@@ -90,11 +99,14 @@ backend/Stodash.Api/
   Infrastructure/Errors.cs     SymbolNotFound/NotFound→404, Argument→400, Conflict→409, Upstream→502, DB errors→503
   Infrastructure/Json.cs       J.Num/J.Str/J.Long: lenient readers for Yahoo's {raw,fmt} and {} values
 frontend/src/
-  App.tsx                      Workspace state (≤4 panels, active panel) in localStorage; command routing; Alt+1–4
+  App.tsx                      Workspace state (≤4 panels, active, sizes, maximized) in localStorage; command
+                               routing; LAYOUT commands; keyboard shortcuts; toast for command results
+  lib/workspace.ts             Workspace shape + isWorkspace validator, what a layout saves (toSaved), saveLayout
+  components/Splitters.tsx     Drag/keyboard handles that set the grid's column and row shares (--c1/--r1 CSS vars)
   lib/commands.ts              Command parser + FUNCTIONS / GLOBAL_COMMANDS registries
   components/CommandBar.tsx    Autocomplete (search API + function list), history, global key capture
   components/PriceChart.tsx    lightweight-charts wrapper: candles/area, SMA20/50, volume, legend
-  panels/                      DES, GP, FA, N, CF (symbol panels); W, ECO, YC, FX, CRYPTO, HELP (global panels);
+  panels/                      DES, GP, FA, N, CF (symbol panels); W, ECO, YC, FX, CRYPTO, TOP, EQS, LAYOUT, HELP (global);
                                PanelFrame wraps each. panels/types.ts: SymbolSpec | GlobalSpec, GLOBAL_KINDS
   hooks/useApi.ts              Fetch-by-key with abort, background refresh, and keeps last good data
   hooks/useQuoteStream.ts      One /ws/quotes connection per W panel: status, live symbols, latest trades
@@ -136,9 +148,16 @@ frontend/e2e/                  Playwright: fixtures.ts (auto-installed mock, ope
   in an ARM64 process ("%1 is not a valid Win32 application"). `LocalDbPipe` + its interceptor resolve the instance's
   named pipe with `sqllocaldb info` and refresh it after failures (the pipe changes on every LocalDB restart).
   Don't remove this. On x64 and Azure SQL it does nothing.
-- **Global commands:** `W`, `ECO`, `YC`, `FX`, `CRYPTO`, `HELP`, `CLEAR` don't take a ticker. If a function follows
-  (`W DES`), it's a ticker (W is Wayfair). ECO/YC/FX/CRYPTO/HELP open once (running them again focuses the panel);
-  W can be open several times. Rows in W/FX/CRYPTO open into another panel (`openFrom` in App), never replacing the list.
+- **Global commands:** `W`, `ECO`, `YC`, `FX`, `CRYPTO`, `TOP`, `EQS`, `LAYOUT`, `HELP`, `CLEAR` don't take a ticker.
+  If a function follows (`W DES`, `LAYOUT DES`), it's a ticker (W is Wayfair). Everything but W opens once (running it
+  again focuses the panel); W can be open several times. Rows in W/FX/CRYPTO/EQS open into another panel (`openFrom` in
+  App), never replacing the list.
+- **Shortcuts** live in one keydown handler in App and match `e.code` (layout-independent). Alt+letters in use: M, X, L,
+  [ ], comma, period; Alt+1–4 panels; Alt+Shift+1–9 layouts; `?` help (only outside inputs). Avoid Alt+D/E/F (Chrome).
+- **Saved layouts** hold the workspace JSON (panels without LAYOUT, activeId, sizes). The frontend validates them with
+  `isWorkspace` before loading, so keep that validator backward compatible when panel specs change.
+- **EQS units:** `ScreenerRow.changePercent` is a percent, `dividendYield` a fraction (v7's `dividendYield` is a percent,
+  divided by 100). The panel keeps market caps in **billions** and the client sends dollars.
 - **Live prices:** only US stock tickers stream (`^[A-Z]{1,5}(-[A-Z])?$`, max 50, Finnhub free plan). Everything else
   polls every 15 s. The browser never talks to Finnhub directly.
 - **ECO units:** percent (4.2 = 4.2%), points (percentage points), count, index. CPI and core PCE are converted to

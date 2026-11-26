@@ -20,6 +20,9 @@
 | Watchlists | Several named lists, each owned by a `UserId` (a fixed "local" user until sign-in exists) | Ready for sign-in without a schema change |
 | Hosting (future) | Azure, signed-in users only: the owner plus one or two invited people | Never public. Yahoo/Finnhub terms are personal-use, so revisit data sources before inviting anyone |
 | FRED key | `Fred:ApiKey` in user-secrets (empty placeholder in appsettings) | User will add the key later; ECO shows a "not configured" state until then |
+| EQS data | Bulk snapshot, never per-screen provider calls | User's choice (phase 4): S&P 500 list daily + Yahoo batch quotes (5 calls), kept in SQL, refreshed in the background |
+| Saved layouts | In the database, per `UserId` | User's choice (phase 4) over localStorage, so they're ready for sign-in |
+| Phase 4 order | All of TOP, EQS and layouts at once | User's choice |
 
 ## Free data sources (researched)
 
@@ -32,7 +35,8 @@
 | US Treasury Fiscal Data | Treasury yields, auctions | No | — |
 | CoinGecko | Crypto prices, market caps | Optional demo key | ~30 calls/min |
 | Frankfurter | ECB FX reference rates | No | — |
-| RSS (Reuters, CNBC, MarketWatch, Yahoo) | Headlines | No | — |
+| RSS (CNBC, MarketWatch, Yahoo, Investing.com) | Headlines | No | — (Reuters closed its feeds in 2020; WSJ's markets feed is stale) |
+| datasets/s-and-p-500-companies (GitHub) | S&P 500 constituents with GICS sectors (CSV) | No | — |
 | Alpha Vantage / Twelve Data / FMP / Tiingo / Polygon | Alternates | Yes | Tight free tiers; use only as fallbacks |
 
 ## Phases
@@ -76,12 +80,25 @@ Plan as written:
   Frankfurter fallback). `CRYPTO`: top coins (CoinGecko, no key needed).
 - Persist the cache in SQL Server so it survives restarts, behind an interface so hosting can swap it for Redis.
 
-### Phase 4: Power features (next)
+### Phase 4: Power features ✅ done
+Built as planned below, all at once, and verified in a browser plus 81 mocked and 11 live Playwright tests. Notes:
+- `TOP` reads CNBC, MarketWatch, Yahoo Finance (^GSPC headlines) and Investing.com RSS, plus Finnhub general news
+  with a key. Each item's `provider` is its feed (the panel's filter chips); a failing feed is listed in `failed`.
+- `EQS` screens a snapshot: the S&P 500 CSV from github.com/datasets (24 h, durable) joined with Yahoo's v7 batch quote
+  (needs the crumb, 100 symbols per call). `ScreenerService` is a singleton: it serves stale-while-refreshing after
+  15 min, and `ScreenerRefresher` rebuilds it daily. Filters and sorting run on the backend.
+- `LAYOUT` stores the frontend's workspace JSON in `SavedLayouts` (per `UserId`); the backend only checks its outline.
+  Commands: `LAYOUT`, `LAYOUT SAVE name`, `LAYOUT name`, `LAYOUT DEL name`. `LAYOUT DES` is a ticker, like `W DES`.
+- Panels resize by dragging (or arrow keys on a focused divider); sizes live in the workspace and in saved layouts.
+- New shortcuts: Alt+M maximize, Alt+X close, Alt+[ / Alt+] move, Alt+, / Alt+. cycle, Alt+L layouts,
+  Alt+Shift+1–9 load layout n, ? help.
+
+Plan as written:
 - `TOP`: top market headlines (RSS + Finnhub general news).
 - `EQS`: screener over a preset universe (S&P 500 list, refreshed daily) with filters (P/E, market cap, sector, % change).
 - Saved layouts (named workspaces), more keyboard shortcuts, resizable panels.
 
-### Phase 5: Polish
+### Phase 5: Polish (next)
 Error and empty states, loading skeletons everywhere, theme tweaks, accessibility pass, README and screenshots,
 and optionally backend unit tests (xUnit) for the mappers and the command parser.
 
