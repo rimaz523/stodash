@@ -17,12 +17,14 @@ public sealed class YahooClient : IDisposable
 
     private readonly HttpClient _http;
     private readonly ILogger<YahooClient> _log;
+    private readonly ProviderHealth _health;
     private readonly SemaphoreSlim _crumbLock = new(1, 1);
     private string? _crumb;
 
-    public YahooClient(ILogger<YahooClient> log)
+    public YahooClient(ILogger<YahooClient> log, ProviderHealth health)
     {
         _log = log;
+        _health = health;
         var handler = new SocketsHttpHandler
         {
             UseCookies = true,
@@ -87,6 +89,38 @@ public sealed class YahooClient : IDisposable
         return root?["quotes"] as JsonArray ?? [];
     }
 
+    /// <summary>
+    /// Returns <c>timeseries.result</c>: one entry per requested type (e.g. <c>annualTotalRevenue</c>), each holding
+    /// an array of <c>{asOfDate, currencyCode, reportedValue: {raw}}</c> points. Unknown symbols come back empty.
+    /// No crumb is needed.
+    /// </summary>
+    public async Task<JsonArray> GetFundamentalsAsync(
+        string symbol, IEnumerable<string> types, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+    {
+        var url = "https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/" +
+                  $"{Uri.EscapeDataString(symbol)}?type={string.Join(',', types)}" +
+                  $"&period1={from.ToUnixTimeSeconds()}&period2={to.ToUnixTimeSeconds()}";
+        var (status, root) = await GetJsonAsync(url, ct);
+        if (status == HttpStatusCode.NotFound) return [];
+        if (status != HttpStatusCode.OK)
+            throw new UpstreamException($"Yahoo fundamentals returned {(int)status} for {symbol}.");
+        return root?["timeseries"]?["result"] as JsonArray ?? [];
+    }
+
+    /// <summary>
+    /// Returns the raw <c>news</c> array from Yahoo's search for <paramref name="query"/>:
+    /// <c>{title, publisher, link, providerPublishTime, relatedTickers}</c>.
+    /// </summary>
+    public async Task<JsonArray> SearchNewsAsync(string query, int count, CancellationToken ct)
+    {
+        var url = "https://query1.finance.yahoo.com/v1/finance/search" +
+                  $"?q={Uri.EscapeDataString(query)}&quotesCount=0&newsCount={count}&listsCount=0&enableFuzzyQuery=false";
+        var (status, root) = await GetJsonAsync(url, ct);
+        if (status != HttpStatusCode.OK)
+            throw new UpstreamException($"Yahoo news returned {(int)status}.");
+        return root?["news"] as JsonArray ?? [];
+    }
+
     private async Task<string> GetCrumbAsync(bool forceRefresh, CancellationToken ct)
     {
         if (!forceRefresh && _crumb is { } cached) return cached;
@@ -117,12 +151,15 @@ public sealed class YahooClient : IDisposable
     {
         using var resp = await SendAsync(url, ct);
         if (resp.StatusCode == HttpStatusCode.TooManyRequests)
-            throw new UpstreamException("Yahoo is rate-limiting requests; try again shortly.");
+            throw Fail("Yahoo is rate-limiting requests; try again shortly.");
+        if ((int)resp.StatusCode >= 500)
+            _health.Fail(ProviderHealth.Yahoo, $"Yahoo returned {(int)resp.StatusCode}.");
 
         try
         {
             await using var stream = await resp.Content.ReadAsStreamAsync(ct);
             var root = await JsonNode.ParseAsync(stream, cancellationToken: ct);
+            if ((int)resp.StatusCode < 500) _health.Ok(ProviderHealth.Yahoo);
             return (resp.StatusCode, root);
         }
         catch (JsonException) when (!resp.IsSuccessStatusCode)
@@ -131,7 +168,7 @@ public sealed class YahooClient : IDisposable
         }
         catch (JsonException ex)
         {
-            throw new UpstreamException("Yahoo returned a response that was not JSON.", ex);
+            throw Fail("Yahoo returned a response that was not JSON.", ex);
         }
     }
 
@@ -143,12 +180,18 @@ public sealed class YahooClient : IDisposable
         }
         catch (HttpRequestException ex)
         {
-            throw new UpstreamException("Could not reach Yahoo Finance.", ex);
+            throw Fail("Could not reach Yahoo Finance.", ex);
         }
         catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
         {
-            throw new UpstreamException("Yahoo Finance timed out.", ex);
+            throw Fail("Yahoo Finance timed out.", ex);
         }
+    }
+
+    private UpstreamException Fail(string message, Exception? inner = null)
+    {
+        _health.Fail(ProviderHealth.Yahoo, message);
+        return new UpstreamException(message, inner);
     }
 
     public void Dispose()

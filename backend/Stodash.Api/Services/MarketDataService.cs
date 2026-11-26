@@ -301,11 +301,5 @@ public sealed partial class MarketDataService(
 
     // ---------------------------------------------------------------- cache
 
-    private async Task<T> Cached<T>(string key, TimeSpan ttl, Func<Task<T>> load)
-    {
-        if (cache.TryGetValue(key, out T? hit) && hit is not null) return hit;
-        var value = await load(); // failures throw and are deliberately not cached
-        cache.Set(key, value, ttl);
-        return value;
-    }
+    private Task<T> Cached<T>(string key, TimeSpan ttl, Func<Task<T>> load) => cache.GetOrLoadAsync(key, ttl, load);
 }

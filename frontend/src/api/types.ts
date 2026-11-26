@@ -106,3 +106,99 @@ export interface SearchResult {
 
 export const RANGES = ['1D', '5D', '1M', '3M', '6M', 'YTD', '1Y', '5Y', 'MAX'] as const
 export type Range = (typeof RANGES)[number]
+
+// Mirrors backend/Stodash.Api/Models/ResearchModels.cs
+
+/**
+ * How to read a row's numbers: money (statement currency), perShare (currency per share), shares (a count),
+ * fraction (0.25 = 25%) or multiple (a plain ratio such as 1.8).
+ */
+export type RowUnit = 'money' | 'perShare' | 'shares' | 'fraction' | 'multiple'
+
+export interface StatementRow {
+  id: string
+  label: string
+  unit: RowUnit
+  /** One of the key rows shown by default; the rest appear when expanded. */
+  core: boolean
+  /** A subtotal or total, shown in bold. */
+  total: boolean
+  /** Lines up with FinancialStatements.periods. */
+  values: (number | null)[]
+}
+
+export const PERIODS = ['annual', 'quarterly'] as const
+export type Period = (typeof PERIODS)[number]
+
+export interface FinancialStatements {
+  symbol: string
+  period: Period
+  currency: string | null
+  /** Period end dates (yyyy-MM-dd), newest first. */
+  periods: string[]
+  income: StatementRow[]
+  balance: StatementRow[]
+  cashFlow: StatementRow[]
+  ratios: StatementRow[]
+  /** Why there's nothing to show (an index, currency, crypto). Null when there is data. */
+  note: string | null
+  source: string
+}
+
+export interface NewsItem {
+  headline: string
+  /** Always an absolute http(s) link (checked by the backend). */
+  url: string
+  source: string | null
+  published: string
+  summary: string | null
+  tickers: string[]
+  provider: string
+}
+
+export interface NewsFeed {
+  symbol: string
+  items: NewsItem[]
+  providers: string[]
+}
+
+export const FILING_CATEGORIES = ['annual', 'quarterly', 'current', 'proxy', 'insider', 'other'] as const
+export type FilingCategory = (typeof FILING_CATEGORIES)[number]
+
+export interface Filing {
+  form: string
+  category: FilingCategory
+  /** yyyy-MM-dd */
+  filingDate: string
+  reportDate: string | null
+  description: string
+  url: string
+  indexUrl: string
+  accessionNumber: string
+}
+
+export interface FilingList {
+  symbol: string
+  cik: number | null
+  company: string | null
+  /** Newest first. */
+  items: Filing[]
+  /** Why there are no filings (a non-US listing, an index). Null when the company is on EDGAR. */
+  note: string | null
+  source: string
+}
+
+// Mirrors the anonymous object returned by GET /api/health
+
+export interface ProviderStatus {
+  configured: boolean
+  state: 'off' | 'unknown' | 'up' | 'down'
+  lastOk: string | null
+  lastFailure: string | null
+  lastError: string | null
+}
+
+export interface Health {
+  status: string
+  providers: { yahoo: ProviderStatus; finnhub: ProviderStatus; sec: ProviderStatus }
+}

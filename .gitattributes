@@ -1,0 +1,13 @@
+# Text files are checked out with CRLF line endings (the owner's preference), whatever core.autocrlf says.
+# Git still stores them normalized to LF in the repository.
+* text=auto eol=crlf
+
+# Never touch binary files.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.zip binary

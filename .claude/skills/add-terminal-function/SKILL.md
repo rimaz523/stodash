@@ -43,6 +43,12 @@ Work through these steps in order, then run the `verify-stodash` skill.
 11. **Routing:** render the panel for its kind in the `panels.map` in `App.tsx`.
 12. **Docs in the app:** add the command to `COMMANDS` in `panels/HelpPanel.tsx`.
 
+## Tests (`frontend/e2e`)
+
+13a. Add the endpoint to `defaultReply` in `e2e/mock-api.ts` with a small typed fixture builder.
+13b. Add `e2e/<name>.spec.ts`: happy path, the "doesn't apply" note (if any), an unknown ticker, and a provider
+     error via `mock.on(...)`. Add a line to `e2e/live/smoke.spec.ts`. Run `npm run test:e2e`.
+
 ## Wrap up
 
 13. Update the README command table and roadmap checkboxes, and `docs/ROADMAP.md`.

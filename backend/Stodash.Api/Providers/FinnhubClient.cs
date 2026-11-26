@@ -13,10 +13,10 @@ public sealed class FinnhubOptions
 }
 
 /// <summary>
-/// Optional fallback provider. Only used when an API key is configured and Yahoo fails.
-/// Free key: https://finnhub.io/register
+/// Optional provider, active only when an API key is configured: a fallback for quotes and profiles,
+/// and a second news source next to Yahoo. Free key: https://finnhub.io/register
 /// </summary>
-public sealed class FinnhubClient(HttpClient http, IOptions<FinnhubOptions> options)
+public sealed class FinnhubClient(HttpClient http, IOptions<FinnhubOptions> options, ProviderHealth health)
 {
     private readonly string? _key = options.Value.ApiKey;
 
@@ -51,6 +51,17 @@ public sealed class FinnhubClient(HttpClient http, IOptions<FinnhubOptions> opti
             [], stats, "Finnhub");
     }
 
+    /// <summary>
+    /// Company headlines between two dates: <c>[{headline, source, url, datetime, summary, related}]</c>.
+    /// The free tier covers North American companies; anything else comes back empty.
+    /// </summary>
+    public async Task<JsonArray> GetCompanyNewsAsync(string symbol, DateOnly from, DateOnly to, CancellationToken ct)
+    {
+        var node = await GetAsync(
+            $"company-news?symbol={Uri.EscapeDataString(symbol)}&from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}", ct);
+        return node as JsonArray ?? [];
+    }
+
     private async Task<JsonNode?> GetAsync(string path, CancellationToken ct)
     {
         if (!IsConfigured) throw new UpstreamException("Finnhub is not configured.");
@@ -62,16 +73,28 @@ public sealed class FinnhubClient(HttpClient http, IOptions<FinnhubOptions> opti
             req.Headers.Add("X-Finnhub-Token", _key);
             resp = await http.SendAsync(req, ct);
         }
-        catch (HttpRequestException ex) { throw new UpstreamException("Could not reach Finnhub.", ex); }
-        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested) { throw new UpstreamException("Finnhub timed out.", ex); }
+        catch (HttpRequestException ex) { throw Fail("Could not reach Finnhub.", ex); }
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested) { throw Fail("Finnhub timed out.", ex); }
 
         using (resp)
         {
             if (resp.StatusCode == HttpStatusCode.TooManyRequests)
-                throw new UpstreamException("Finnhub rate limit reached.");
+                throw Fail("Finnhub rate limit reached.");
             if (!resp.IsSuccessStatusCode)
-                throw new UpstreamException($"Finnhub returned {(int)resp.StatusCode}.");
-            return JsonNode.Parse(await resp.Content.ReadAsStringAsync(ct));
+                throw Fail($"Finnhub returned {(int)resp.StatusCode}.");
+            try
+            {
+                var root = JsonNode.Parse(await resp.Content.ReadAsStringAsync(ct));
+                health.Ok(ProviderHealth.Finnhub);
+                return root;
+            }
+            catch (System.Text.Json.JsonException ex) { throw Fail("Finnhub returned a response that was not JSON.", ex); }
         }
+    }
+
+    private UpstreamException Fail(string message, Exception? inner = null)
+    {
+        health.Fail(ProviderHealth.Finnhub, message);
+        return new UpstreamException(message, inner);
     }
 }

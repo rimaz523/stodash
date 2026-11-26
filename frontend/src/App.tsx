@@ -1,14 +1,17 @@
 import { useCallback, useEffect } from 'react'
-import { RANGES } from './api/types'
+import { FILING_CATEGORIES, PERIODS, RANGES } from './api/types'
 import { Brand, Clocks, StatusBar } from './components/Chrome'
 import { CommandBar } from './components/CommandBar'
 import { MarketStrip } from './components/MarketStrip'
 import { useLocalStorage } from './hooks/useLocalStorage'
-import { parseCommand, type FunctionCode } from './lib/commands'
+import { isFunction, parseCommand, type FunctionCode } from './lib/commands'
 import { ChartPanel } from './panels/ChartPanel'
 import { DescriptionPanel } from './panels/DescriptionPanel'
+import { FilingsPanel } from './panels/FilingsPanel'
+import { FinancialsPanel } from './panels/FinancialsPanel'
 import { HelpPanel } from './panels/HelpPanel'
-import type { PanelSpec, PanelState } from './panels/types'
+import { NewsPanel } from './panels/NewsPanel'
+import { STATEMENTS, type PanelSpec, type PanelState } from './panels/types'
 
 const MAX_PANELS = 4
 
@@ -39,7 +42,7 @@ function isWorkspace(v: unknown): v is Workspace {
     w.panels.every(
       (p) =>
         typeof p?.id === 'string' &&
-        (p.kind === 'HELP' || ((p.kind === 'DES' || p.kind === 'GP') && typeof p.symbol === 'string')),
+        (p.kind === 'HELP' || (isFunction(p.kind) && typeof p.symbol === 'string')),
     )
   )
 }
@@ -89,9 +92,20 @@ export default function App() {
         }
         return place({ kind: 'HELP' }, newPanel)
       }
+      // Carry the active panel's view settings (chart range, FA statement, CF filter) over to the new view.
       const current = panels.find((p) => p.id === activeId)
-      const keepRange = current && current.kind !== 'HELP' ? current.range : undefined
-      return place({ kind: cmd.fn, symbol: cmd.symbol, range: cmd.range ?? keepRange }, newPanel)
+      const keep = current && current.kind !== 'HELP' ? current : undefined
+      return place(
+        {
+          kind: cmd.fn,
+          symbol: cmd.symbol,
+          range: cmd.range ?? keep?.range,
+          period: cmd.period ?? keep?.period,
+          statement: keep?.statement,
+          filter: keep?.filter,
+        },
+        newPanel,
+      )
     },
     [panels, activeId, place, setWs],
   )
@@ -142,6 +156,30 @@ export default function App() {
           if (p.kind === 'HELP') return <HelpPanel key={p.id} {...frame} onRun={(c) => runCommand(c, false)} />
 
           const onSwitch = (fn: FunctionCode) => update(p.id, { kind: fn })
+          if (p.kind === 'FA')
+            return (
+              <FinancialsPanel
+                key={p.id}
+                {...frame}
+                symbol={p.symbol}
+                period={p.period && PERIODS.includes(p.period) ? p.period : 'annual'}
+                statement={p.statement && STATEMENTS.includes(p.statement) ? p.statement : 'income'}
+                onChange={(patch) => update(p.id, patch)}
+                onSwitch={onSwitch}
+              />
+            )
+          if (p.kind === 'N') return <NewsPanel key={p.id} {...frame} symbol={p.symbol} onSwitch={onSwitch} />
+          if (p.kind === 'CF')
+            return (
+              <FilingsPanel
+                key={p.id}
+                {...frame}
+                symbol={p.symbol}
+                filter={p.filter && (FILING_CATEGORIES as readonly string[]).includes(p.filter) ? p.filter : 'all'}
+                onFilterChange={(filter) => update(p.id, { filter })}
+                onSwitch={onSwitch}
+              />
+            )
           if (p.kind === 'GP')
             return (
               <ChartPanel
@@ -168,7 +206,7 @@ function EmptyState({ onRun }: { onRun: (cmd: string) => void }) {
       <h2>No panels open</h2>
       <span>Type a command above, or try one of these:</span>
       <div className="examples">
-        {['AAPL DES', 'NVDA GP 1Y', '^GSPC GP', 'BTC-USD GP 5D', 'HELP'].map((c) => (
+        {['AAPL DES', 'NVDA GP 1Y', 'MSFT FA', 'TSLA N', 'AAPL CF', '^GSPC GP', 'HELP'].map((c) => (
           <button key={c} className="chip mono" onClick={() => onRun(c)}>
             {c}
           </button>

@@ -70,3 +70,8 @@ const MARKET_STATES: Record<string, string> = {
 export function marketState(s: string | null | undefined): string | null {
   return s ? (MARKET_STATES[s] ?? titleCase(s.toLowerCase())) : null
 }
+
+/** "1.8×" for plain ratios such as debt/equity. */
+export function multiple(n: N): string {
+  return isNum(n) ? `${n.toFixed(2)}×` : DASH
+}

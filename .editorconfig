@@ -1,0 +1,5 @@
+root = true
+
+# CRLF everywhere, matching .gitattributes.
+[*]
+end_of_line = crlf

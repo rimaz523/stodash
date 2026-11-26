@@ -12,6 +12,10 @@
 | Secondary source | Finnhub (optional key) | Fallback for quotes and profiles; used for news in phase 2 |
 | Workflow | Plan, then one phase at a time, checking in after each | User prefers to review between phases |
 | Panels | Max 4; Enter = active panel, Shift+Enter = new | Bloomberg-like "load into current window" |
+| FA depth | ~15–20 key rows per statement + an "expand" toggle for all rows | User's choice (phase 2) |
+| FA source | Yahoo fundamentals-timeseries first, SEC companyfacts fallback | quoteSummary statement modules are too sparse |
+| News | Yahoo always; Finnhub merged in when a key is set | User wants free services only; Finnhub's free plan qualifies |
+| SEC contact | `Sec:UserAgent` in user-secrets, never committed | SEC requires a contact email; it's set on the user's machine |
 
 ## Free data sources (researched)
 
@@ -35,7 +39,10 @@ Command bar with autocomplete and history; `DES` (quote, ranges, ~25 key stats, 
 (11 instruments); world clocks; status bar with API health; HELP; CLEAR; up to 4 panels saved in localStorage;
 Alt+1–4; Enter on a company name opens the best match. Verified in a browser.
 
-### Phase 2: Core research (next)
+### Phase 2: Core research ✅ done
+Built as planned below, with Yahoo fundamentals-timeseries (not quoteSummary) as FA's main source. Extras: the `FA Q`
+shortcut, a YoY/QoQ Change column, ratios (margins, growth, ROE/ROA, D/E, current ratio), filing categories with
+counts, and 8-K item descriptions. Verified in a browser.
 - `FA`: financial statements (income, balance sheet, cash flow; annual and quarterly toggle) plus key ratios.
   Source: Yahoo `quoteSummary` modules `incomeStatementHistory`, `balanceSheetHistory`, `cashflowStatementHistory`
   (and `*Quarterly`), or the Yahoo fundamentals-timeseries endpoint. Fallback: SEC EDGAR `companyfacts` for US
@@ -47,7 +54,7 @@ Alt+1–4; Enter on a company name opens the best match. Verified in a browser.
   configurable in appsettings (`Sec:UserAgent`) instead of hard-coding the user's email.
 - Add a simple provider-health line to `/api/health`.
 
-### Phase 3: Live and macro
+### Phase 3: Live and macro (next)
 - `W`: watchlist (persisted on the backend in SQLite, or localStorage first) with live quotes through Finnhub WebSocket,
   relayed by a backend WebSocket `/ws/quotes` so the key stays server-side.
 - `ECO`: macro dashboard from FRED (CPI YoY, core PCE, unemployment, fed funds, GDP growth, 10Y-2Y).

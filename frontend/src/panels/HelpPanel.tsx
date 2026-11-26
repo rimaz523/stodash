@@ -6,6 +6,10 @@ const COMMANDS: [string, string][] = [
   ['AAPL DES', 'Overview: price, trading ranges, key statistics, profile, management'],
   ['AAPL GP', 'Price chart with range, candles/line, SMA 20/50 and volume'],
   ['AAPL GP 1Y', 'Price chart opened at a range: 1D 5D 1M 3M 6M YTD 1Y 5Y MAX'],
+  ['AAPL FA', 'Financials: income statement, balance sheet, cash flow and ratios'],
+  ['AAPL FA Q', 'Financials opened on quarterly periods (A for annual)'],
+  ['AAPL N', 'Latest company headlines; links open in a new tab'],
+  ['AAPL CF', 'SEC filings (10-K, 10-Q, 8-K, proxy, insider) with links to EDGAR'],
   ['MSFT US EQUITY GP', 'Bloomberg-style words like US and EQUITY are ignored'],
   ['HELP', 'This panel'],
   ['CLEAR', 'Close every panel'],
@@ -73,7 +77,10 @@ export function HelpPanel({ onRun, ...frame }: PanelProps & { onRun: (cmd: strin
           </tbody>
         </table>
 
-        <p>Data from Yahoo Finance, usually delayed about 15 minutes. For personal research only.</p>
+        <p>
+          Data from Yahoo Finance (usually delayed about 15 minutes) and SEC EDGAR, plus Finnhub when a key is set.
+          For personal research only.
+        </p>
       </div>
     </PanelFrame>
   )

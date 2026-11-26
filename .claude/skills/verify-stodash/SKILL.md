@@ -21,6 +21,12 @@ cd frontend; npx tsc -b; npx oxlint src; npx vite build
 
 If `frontend/node_modules` is missing, run `npm install` in `frontend` first.
 
+```powershell
+cd frontend; npm run test:e2e
+```
+All Playwright tests must pass (mocked API, no backend needed). If Chromium is missing, run
+`npx playwright install chromium`. With the servers running (step 2), `npm run test:e2e:live` also checks real data.
+
 ## 2. Start both servers
 
 The easiest way is `.\scripts\start.ps1 -NoBrowser`, which waits until both answer. Stop them afterwards with

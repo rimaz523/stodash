@@ -1,9 +1,12 @@
-import { RANGES, type Range } from '../api/types'
+import { RANGES, type Period, type Range } from '../api/types'
 
 /** Functions that act on a ticker, e.g. "AAPL GP". */
 export const FUNCTIONS = {
   DES: { label: 'Description', hint: 'Company overview, key stats and profile' },
   GP: { label: 'Price Chart', hint: 'Candles or line, volume, moving averages' },
+  FA: { label: 'Financials', hint: 'Income statement, balance sheet, cash flow and ratios' },
+  N: { label: 'News', hint: 'Latest company headlines' },
+  CF: { label: 'SEC Filings', hint: '10-K, 10-Q, 8-K and more from EDGAR' },
 } as const
 export type FunctionCode = keyof typeof FUNCTIONS
 
@@ -15,7 +18,7 @@ export const GLOBAL_COMMANDS = {
 export type GlobalCommand = keyof typeof GLOBAL_COMMANDS
 
 export type ParsedCommand =
-  | { kind: 'function'; symbol: string; fn: FunctionCode; range?: Range }
+  | { kind: 'function'; symbol: string; fn: FunctionCode; range?: Range; period?: Period }
   | { kind: 'global'; command: GlobalCommand }
   | { kind: 'error'; message: string }
 
@@ -35,10 +38,13 @@ function isRange(s: string): s is Range {
   return (RANGES as readonly string[]).includes(s)
 }
 
+const PERIOD_WORDS: Record<string, Period> = { A: 'annual', ANNUAL: 'annual', Q: 'quarterly', QUARTERLY: 'quarterly' }
+
 /**
  * "AAPL"          → AAPL DES
  * "aapl gp"       → AAPL GP
  * "AAPL GP 1Y"    → AAPL GP, 1Y range
+ * "AAPL FA Q"     → AAPL FA, quarterly
  * "msft us equity des" → MSFT DES
  * "help"          → HELP
  */
@@ -58,7 +64,14 @@ export function parseCommand(input: string): ParsedCommand | null {
     return { kind: 'error', message: `Unknown function "${fnToken}". Available: ${known}. Type HELP for more.` }
   }
 
-  const rangeToken = args[1]
+  const argToken = args[1]
+  if (fnToken === 'FA') {
+    if (argToken && !(argToken in PERIOD_WORDS))
+      return { kind: 'error', message: `Unknown period "${argToken}". Use A (annual) or Q (quarterly).` }
+    return { kind: 'function', symbol: first, fn: fnToken, period: argToken ? PERIOD_WORDS[argToken] : undefined }
+  }
+
+  const rangeToken = argToken
   if (rangeToken && !isRange(rangeToken))
     return { kind: 'error', message: `Unknown range "${rangeToken}". Use ${RANGES.join(' ')}.` }
 

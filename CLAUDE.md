@@ -4,8 +4,8 @@ Stodash is a personal, keyboard-driven market terminal inspired by the Bloomberg
 **free** data. It's for the owner's own research and isn't a product, so never deploy it publicly or
 redistribute the data, because free provider terms forbid that.
 
-**Status:** Phase 1 is done (command bar, `DES`, `GP`, market strip). Phase 2 is next, but don't start it
-until the user asks. See @docs/ROADMAP.md for the phase plans and the decisions already made.
+**Status:** Phases 1 and 2 are done (command bar, `DES`, `GP`, `FA`, `N`, `CF`, market strip, provider
+health). Phase 3 is next, but don't start it until the user asks. See @docs/ROADMAP.md for the phase plans and the decisions already made.
 
 ## Stack (chosen by the user; don't swap)
 
@@ -37,8 +37,17 @@ dotnet build backend/Stodash.Api                  # 0 warnings expected
 cd frontend; npx tsc -b; npx oxlint src; npx vite build
 ```
 
-There's no test project yet. Verify behavior by curling the API and using the app in a browser. The
-`/verify-stodash` skill has the full checklist.
+Browser tests (Playwright, in `frontend/e2e`) must also pass:
+
+```powershell
+cd frontend; npm run test:e2e        # 30 tests against a mocked API; no backend needed, ~10 s
+cd frontend; npm run test:e2e:live   # 4 smoke tests against the real API on :5080 (start it first)
+```
+
+The mocked suite runs its own Vite server on :5199 and answers every `/api` call from `e2e/mock-api.ts`, whose
+fixtures are typed with `src/api/types.ts`. When an API record changes, update the fixture too. There are no backend
+unit tests yet. Also verify by curling the API and using the app in a browser; the `/verify-stodash` skill has the
+full checklist.
 
 ## Architecture
 
@@ -47,11 +56,17 @@ scripts/                       start/stop .ps1 + double-click .cmd wrappers
 backend/Stodash.Api/
   Program.cs                   DI, ProblemDetails, exception handler, CORS, OpenAPI (/openapi/v1.json in dev)
   Endpoints/MarketEndpoints.cs All routes under /api (MapGroup)
-  Services/MarketDataService   The ONE place endpoints get data from: symbol validation, provider choice,
+  Services/MarketDataService   Quotes, charts, profiles, search: symbol validation, provider choice,
                                fallbacks, JSON→model mapping, IMemoryCache with per-kind TTLs
+  Services/FinancialsService   FA: Yahoo fundamentals-timeseries, then SEC companyfacts; line defs + ratios
+  Services/NewsService         N: Yahoo search news + Finnhub company-news (if key), merged and de-duplicated
+  Services/FilingsService      CF: SEC submissions → filings with category + description
+  Services/SecCompanyLookup    Ticker → CIK from SEC's company_tickers.json (cached 24 h)
   Providers/YahooClient        Singleton. Unofficial Yahoo endpoints; owns cookie jar + "crumb" token
-  Providers/FinnhubClient      Typed HttpClient. Optional fallback, active only if Finnhub:ApiKey is set
-  Models/MarketModels.cs       Response records (camelCase JSON by default)
+  Providers/FinnhubClient      Typed HttpClient. Optional, active only if Finnhub:ApiKey is set
+  Providers/SecClient          Typed HttpClient. Needs Sec:UserAgent ("Stodash email") or SEC answers 403
+  Models/MarketModels.cs       Response records (camelCase JSON by default); ResearchModels.cs for FA/N/CF
+  Infrastructure/ProviderHealth Singleton; clients record each call's success/failure for /api/health
   Infrastructure/Errors.cs     SymbolNotFoundException→404, ArgumentException→400, UpstreamException→502
   Infrastructure/Json.cs       J.Num/J.Str/J.Long: lenient readers for Yahoo's {raw,fmt} and {} values
 frontend/src/
@@ -59,12 +74,20 @@ frontend/src/
   lib/commands.ts              Command parser + FUNCTIONS / GLOBAL_COMMANDS registries
   components/CommandBar.tsx    Autocomplete (search API + function list), history, global key capture
   components/PriceChart.tsx    lightweight-charts wrapper: candles/area, SMA20/50, volume, legend
-  panels/                      DescriptionPanel (DES), ChartPanel (GP), HelpPanel; PanelFrame wraps each
+  panels/                      DES, GP, FA (FinancialsPanel), N (NewsPanel), CF (FilingsPanel), HELP; PanelFrame wraps each
   hooks/useApi.ts              Fetch-by-key with abort, background refresh, and keeps last good data
   api/client.ts + types.ts     Typed client; types mirror the C# records by hand
+frontend/e2e/                  Playwright: fixtures.ts (auto-installed mock, openWith/panel/run helpers),
+                               mock-api.ts (fake /api), one spec per area, live/ for real-backend smoke tests
 ```
 
 ## Conventions and gotchas
+
+- **Line endings are always CRLF**, in every file you create or edit (code, docs, config, tests, scripts).
+  `.gitattributes` (`* text=auto eol=crlf`) and `.editorconfig` enforce this. The Write tool, heredocs, `sed` and
+  node scripts all produce LF, so convert after writing (e.g. `node -e` with `s.replace(/\r?\n/g, '\r\n')`) and
+  check with node that no LF-only lines remain. Don't count endings with `grep -c $'\r$'` in Git Bash here: it reports
+  every file as CRLF.
 
 - **Adding a terminal function** (FA, N, ECO, …) touches about 10 places across both halves. Use the
   `/add-terminal-function` skill, which has the checklist.
@@ -74,15 +97,22 @@ frontend/src/
 - **Yahoo needs a crumb** for `quoteSummary`: GET `fc.yahoo.com` (returns 404 but sets the cookie), then
   `/v1/test/getcrumb`. `YahooClient` does this lazily and retries once on 401/403. Chart, search and
   history endpoints don't need it. Yahoo is unofficial, so if it breaks, check this flow first.
+- **"Doesn't apply" vs "unknown":** FA, N and CF return `200` with an empty list and a `note` for instruments the
+  function doesn't cover (an index, a non-US listing). They confirm unknown tickers through `GetQuoteAsync`, which gives a 404.
+- **FA rows** are defined once in `FinancialsService` (`Line`: Yahoo id, label, core/total, unit, SEC tags).
+  A row's `unit` drives frontend formatting: money, perShare, shares, fraction, multiple.
+- **SEC** asks for at most 10 requests/s. Everything SEC-backed is cached (tickers 24 h, filings 1 h, financials 12 h).
 - **Fallback chain for quotes:** quoteSummary `price`, then chart meta, then Finnhub (if a key is set).
   Profiles go Yahoo, then Finnhub. Charts have no fallback yet.
-- **Caching:** quote 15 s, intraday history 1–5 min, daily 15–30 min, profile 6 h, search 1 h. Never cache
+- **Caching:** quote 15 s, intraday history 1–5 min, daily 15–30 min, news 5 min, filings 1 h, profile 6 h,
+  financials 12 h, search 1 h. Never cache
   failures. The cache is in memory for now; SQLite is planned.
 - **Symbols** are validated by `^[A-Z0-9^][A-Z0-9.\-=^]{0,19}$` in both `MarketDataService` and `lib/commands.ts`.
   Keep the two in sync. Supported forms include `^GSPC`, `EURUSD=X`, `BTC-USD`, `GC=F`, `RY.TO` and `BRK-B`.
 - **Chart time:** bars arrive as UTC unix seconds. `PriceChart` shifts them to exchange wall-clock time with
   `tzOffsetSeconds`, because lightweight-charts has no time zones. Legend dates are then formatted as UTC.
-- **API keys stay on the backend**, in user-secrets or env vars (`Finnhub__ApiKey`). Never put them in the frontend
+- **API keys and the SEC contact email stay on the backend**, in user-secrets or env vars (`Finnhub__ApiKey`,
+  `Sec__UserAgent`). Never put them in the frontend
   or in committed appsettings.
 - Batch endpoint `/api/quotes?symbols=` skips symbols that fail instead of failing the whole request (≤20 symbols).
 - Panel/workspace state and chart prefs persist in localStorage under keys ending in `.v1`. Bump the version if

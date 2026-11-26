@@ -1,4 +1,15 @@
-import type { CompanyProfile, PriceHistory, Quote, Range, SearchResult } from './types'
+import type {
+  CompanyProfile,
+  FilingList,
+  FinancialStatements,
+  Health,
+  NewsFeed,
+  Period,
+  PriceHistory,
+  Quote,
+  Range,
+  SearchResult,
+} from './types'
 
 export class ApiError extends Error {
   readonly status: number
@@ -46,4 +57,9 @@ export const api = {
     get<PriceHistory>(`/api/history/${enc(symbol)}?range=${range}`, signal),
   profile: (symbol: string, signal?: AbortSignal) => get<CompanyProfile>(`/api/profile/${enc(symbol)}`, signal),
   search: (q: string, signal?: AbortSignal) => get<SearchResult[]>(`/api/search?q=${enc(q)}`, signal),
+  financials: (symbol: string, period: Period, signal?: AbortSignal) =>
+    get<FinancialStatements>(`/api/financials/${enc(symbol)}?period=${period}`, signal),
+  news: (symbol: string, signal?: AbortSignal) => get<NewsFeed>(`/api/news/${enc(symbol)}`, signal),
+  filings: (symbol: string, signal?: AbortSignal) => get<FilingList>(`/api/filings/${enc(symbol)}`, signal),
+  health: (signal?: AbortSignal) => get<Health>('/api/health', signal),
 }
