@@ -1,0 +1,66 @@
+---
+name: verify-stodash
+description: Build, run and smoke-test Stodash (the .NET API and the React frontend) before calling a change done. Use after any code change, when asked to run or start the app, or when something looks broken.
+---
+
+# Verify Stodash
+
+Run from the repo root. All shell examples are PowerShell (the user is on Windows).
+
+## 1. Static checks (must all be clean)
+
+```powershell
+dotnet build backend/Stodash.Api
+```
+Expect `0 Warning(s)` and `0 Error(s)`.
+
+```powershell
+cd frontend; npx tsc -b; npx oxlint src; npx vite build
+```
+`tsc` and `oxlint` print nothing on success, and `vite build` ends with `✓ built`.
+
+If `frontend/node_modules` is missing, run `npm install` in `frontend` first.
+
+## 2. Start both servers
+
+The easiest way is `.\scripts\start.ps1 -NoBrowser`, which waits until both answer. Stop them afterwards with
+`.\scripts\stop.ps1`. Or start them manually in the background:
+
+```powershell
+dotnet run --project backend/Stodash.Api
+```
+```powershell
+cd frontend; npm run dev
+```
+The API runs on http://localhost:5080 and the web app on http://localhost:5173. If port 5080 is taken, an old API
+is still running, so stop it rather than changing ports.
+
+## 3. API smoke test
+
+```powershell
+curl.exe -s localhost:5080/api/health
+curl.exe -s localhost:5080/api/quote/AAPL
+curl.exe -s "localhost:5080/api/history/AAPL?range=1D"
+curl.exe -s localhost:5080/api/profile/MSFT
+curl.exe -s "localhost:5080/api/search?q=nvid"
+curl.exe -s "localhost:5080/api/quotes?symbols=^GSPC,EURUSD=X,BTC-USD"
+curl.exe -s -o NUL -w "%{http_code}" localhost:5080/api/quote/ZZZZZZ    # expect 404
+curl.exe -s -o NUL -w "%{http_code}" "localhost:5080/api/history/AAPL?range=7X"  # expect 400
+```
+Check for any new endpoint as well. A 502 means the provider failed. Yahoo may be rate-limiting, or its crumb flow
+may have changed (see CLAUDE.md).
+
+## 4. In the browser (http://localhost:5173)
+
+- The default layout loads (AAPL DES + AAPL GP), the market strip fills in, and the status bar says "API connected".
+- Type `tesla` and press Enter: it opens TSLA. `MSFT GP 1Y` then Shift+Enter opens a new panel.
+- `AAPL XYZ` shows an inline "Unknown function" error. `ZZZZQQ` shows "Couldn't load" inside the panel.
+- `^GSPC GP 1D` shows an intraday line or candles with a dashed prev-close line, and the axis is in New York time.
+- Hovering the chart updates the legend, and Line, SMA and Volume toggles work. `HELP` opens the help panel.
+- The browser console has no errors other than expected 404s from deliberate bad-ticker tests.
+- Exercise whatever you just changed.
+
+## 5. Report
+
+Say what you checked and what you couldn't (for example, data looks stale because the market is closed). Stop
+any servers you started unless the user wants them left running.
