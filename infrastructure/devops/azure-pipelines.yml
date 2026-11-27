@@ -1,0 +1,61 @@
+trigger:
+  branches:
+    include:
+      - master
+  paths:
+    exclude:
+      - .claude/*
+      - backend/*
+      - docs/*
+      - frontend/*
+      - scripts/*
+
+variables:
+  - template: 'variables/service-connections.yml'
+  - template: 'variables/build.yml'
+
+pool:
+  vmImage: '$(buildVmImage)'
+
+stages:
+  - stage: 'Build'
+    displayName: 'Build Terraform IAC'
+    jobs:
+      - job: 'Build'
+        displayName: 'Build job'
+        steps:
+          - template: './steps/build.yml'
+
+  - stage: 'Dev_Validate_Plan'
+    displayName: 'Validate Terraform Plan on Dev Env'
+    dependsOn: 'Build'
+    condition: and (succeeded(), eq(variables['Build.Reason'], 'PullRequest'))
+    variables:
+    - template: 'variables/dev.yml'
+    jobs:
+      - deployment: 'Validate'
+        environment: 'DEV'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: './steps/deploy.yml'
+                  parameters:
+                    applyChanges: false
+
+  - stage: 'Dev_Deploy'
+    displayName: 'Deploy to Dev Environment'
+    dependsOn: 'Build'
+    condition: and (succeeded(), eq(variables['Build.SourceBranchName'], 'master'))
+    variables:
+    - template: 'variables/dev.yml'
+    jobs:
+      - deployment: 'Deploy'
+        environment: 'DEV'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: './steps/deploy.yml'
+                  parameters:
+                    applyChanges: true

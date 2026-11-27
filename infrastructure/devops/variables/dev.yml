@@ -1,0 +1,5 @@
+variables:
+- name: terraform-state-key
+  value: 'dev.terraform.tfstate'
+- name: subscription_id
+  value: 51a010a5-fba7-4264-975c-8bf5c0451428
