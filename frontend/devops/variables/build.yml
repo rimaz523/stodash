@@ -1,0 +1,7 @@
+variables:
+  - name: buildVmImage
+    value: windows-2025
+  - name: nodeVersion
+    value: 26.x
+  - name: npm_config_cache
+    value: $(Pipeline.Workspace)/.npm

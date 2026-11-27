@@ -1,0 +1,9 @@
+variables:
+  - name: project
+    value: stodash
+  - name: environment
+    value: dev
+  - name: webAppName
+    value: node-react
+  - name: webAppResourceGroup
+    value: stodash-app-dev-rg

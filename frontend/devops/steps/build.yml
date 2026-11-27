@@ -1,0 +1,41 @@
+steps:
+  - task: UseNode@1
+    displayName: 'Install Node.js'
+    inputs:
+      version: '$(nodeVersion)'
+
+  - task: Cache@2
+    displayName: 'Cache npm packages'
+    inputs:
+      key: 'npm | "$(Agent.OS)" | frontend/package-lock.json'
+      restoreKeys: |
+        npm | "$(Agent.OS)"
+      path: '$(npm_config_cache)'
+
+  - script: npm ci
+    displayName: 'Install dependencies'
+    workingDirectory: frontend
+    retryCountOnTaskFailure: 2
+
+  - script: npx oxlint src
+    displayName: 'Lint'
+    workingDirectory: frontend
+
+  - script: npm run build
+    displayName: 'Build the project'
+    workingDirectory: frontend
+
+  - task: ArchiveFiles@2
+    displayName: 'Zip the build output'
+    inputs:
+      rootFolderOrFile: 'frontend/dist'
+      archiveType: 'zip'
+      archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+      includeRootFolder: false
+      replaceExistingArchive: true
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish Artifact: drop'
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+      artifact: 'drop'
