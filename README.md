@@ -412,7 +412,8 @@ Errors come back as RFC 7807 problem details: `400` bad input, `404` unknown sym
 `502` provider failure, `503` database unavailable.
 When a function doesn't apply to an instrument (FA for an index, CF for a non-US listing), the API returns `200` with an
 empty list and a `note` explaining why.
-The OpenAPI document is at `/openapi/v1.json` in development.
+In development, the OpenAPI document is at `/openapi/v1.json` and Swagger UI is at
+http://localhost:5080/swagger.
 
 Responses are cached to stay within free-tier limits: quotes 15 s, FX 60 s, crypto 2 min, intraday charts 1–5 min,
 news and top headlines 5 min, daily charts 15–30 min, filings and the yield curve 1 h, profiles and ECO 6 h, financials 12 h, and the SEC

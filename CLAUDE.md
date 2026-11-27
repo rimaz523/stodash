@@ -71,7 +71,7 @@ full checklist.
 ```
 scripts/                       start/stop .ps1 + double-click .cmd wrappers
 backend/Stodash.Api/
-  Program.cs                   DI, ProblemDetails, exception handler, CORS, OpenAPI (/openapi/v1.json in dev)
+  Program.cs                   DI, ProblemDetails, exception handler, CORS, OpenAPI (/openapi/v1.json + Swagger UI at /swagger, dev only)
   Endpoints/                   MarketEndpoints (/api market + health), WatchlistEndpoints (/api/watchlists),
                                LayoutEndpoints (/api/layouts), MacroEndpoints (/api/eco, yieldcurve, fx, crypto,
                                topnews, screener + the /ws/quotes WebSocket)

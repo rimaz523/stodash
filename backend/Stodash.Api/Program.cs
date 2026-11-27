@@ -123,7 +123,14 @@ app.UseCors();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });
 
 if (app.Environment.IsDevelopment())
-    app.MapOpenApi(); // /openapi/v1.json
+{
+    app.MapOpenApi();                                                   // /openapi/v1.json
+    app.UseSwaggerUI(o =>                                               // /swagger
+    {
+        o.SwaggerEndpoint("/openapi/v1.json", "Stodash API");
+        o.DocumentTitle = "Stodash API";
+    });
+}
 
 app.MapMarketEndpoints();
 app.MapWatchlistEndpoints();
